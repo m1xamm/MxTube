@@ -6,9 +6,9 @@ import androidx.compose.ui.unit.dp
 
 val MxShapes =
     Shapes(
-        extraSmall = RoundedCornerShape(8.dp),
-        small = RoundedCornerShape(12.dp),
-        medium = RoundedCornerShape(18.dp),
-        large = RoundedCornerShape(26.dp),
-        extraLarge = RoundedCornerShape(34.dp),
+        extraSmall = RoundedCornerShape(12.dp),
+        small = RoundedCornerShape(16.dp),
+        medium = RoundedCornerShape(24.dp),
+        large = RoundedCornerShape(32.dp),
+        extraLarge = RoundedCornerShape(40.dp),
     )

@@ -1,11 +1,17 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+
 package com.m1xamm.mxtube.ui.player
 
 import android.content.Context
 import android.content.pm.ActivityInfo
+import android.view.LayoutInflater
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -33,12 +39,14 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -64,6 +72,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -81,7 +90,6 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
-import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.m1xamm.mxtube.R
 import com.m1xamm.mxtube.data.youtube.PlaybackInfo
@@ -417,6 +425,8 @@ private fun PlayerStage(
     var feedbackBackward by remember { mutableStateOf(false) }
     var feedbackToken by remember { mutableIntStateOf(0) }
     var scrubPositionMs by remember { mutableLongStateOf(positionMs) }
+    val playShape = MaterialShapes.Cookie9Sided.toShape()
+    val feedbackShape = MaterialShapes.Cookie9Sided.toShape()
 
     LaunchedEffect(feedbackToken) {
         if (feedbackToken > 0) {
@@ -444,12 +454,13 @@ private fun PlayerStage(
     ) {
         AndroidView(
             factory = { context ->
-                PlayerView(context).apply {
-                    useController = false
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    setShutterBackgroundColor(android.graphics.Color.BLACK)
-                    setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+                (LayoutInflater.from(context).inflate(R.layout.view_player, null) as PlayerView).apply {
+                    isClickable = false
+                    isFocusable = false
+                    isFocusableInTouchMode = false
+                    setOnTouchListener { _, _ -> false }
                     keepScreenOn = true
+                    setShutterBackgroundColor(android.graphics.Color.BLACK)
                     player = exoPlayer
                 }
             },
@@ -476,14 +487,21 @@ private fun PlayerStage(
         )
 
         if (isBuffering) {
-            CircularProgressIndicator(
-                modifier = Modifier.align(Alignment.Center),
+            LoadingIndicator(
+                modifier =
+                    Modifier
+                        .align(Alignment.Center)
+                        .size(56.dp),
                 color = Color.White,
             )
         }
 
         AnimatedVisibility(
             visible = controlsVisible,
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .zIndex(1f),
             enter = fadeIn(),
             exit = fadeOut(),
         ) {
@@ -553,27 +571,34 @@ private fun PlayerStage(
                     Box(
                         modifier =
                             Modifier
-                                .size(72.dp)
-                                .clip(CircleShape)
-                                .background(Color.Black.copy(alpha = 0.42f))
-                                .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
+                                .size(64.dp)
+                                .clip(playShape)
+                                .background(MaterialTheme.colorScheme.primary)
                                 .clickable(onClick = onPlayPause),
                         contentAlignment = Alignment.Center,
                     ) {
-                        if (isPlaying) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_pause),
-                                contentDescription = stringResource(R.string.player_pause),
-                                modifier = Modifier.size(34.dp),
-                                tint = Color.White,
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Filled.PlayArrow,
-                                contentDescription = stringResource(R.string.player_play),
-                                modifier = Modifier.size(42.dp),
-                                tint = Color.White,
-                            )
+                        AnimatedContent(
+                            targetState = isPlaying,
+                            transitionSpec = {
+                                fadeIn(tween(120)) togetherWith fadeOut(tween(90))
+                            },
+                            label = "playPause",
+                        ) { playing ->
+                            if (playing) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_pause),
+                                    contentDescription = stringResource(R.string.player_pause),
+                                    modifier = Modifier.size(30.dp),
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Filled.PlayArrow,
+                                    contentDescription = stringResource(R.string.player_play),
+                                    modifier = Modifier.size(36.dp),
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                )
+                            }
                         }
                     }
 
@@ -597,9 +622,9 @@ private fun PlayerStage(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(26.dp))
-                                .background(Color.Black.copy(alpha = 0.42f))
-                                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(26.dp))
+                                .clip(RoundedCornerShape(30.dp))
+                                .background(Color.Black.copy(alpha = 0.45f))
+                                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(30.dp))
                                 .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -657,7 +682,8 @@ private fun PlayerStage(
             modifier =
                 Modifier
                     .align(if (feedbackBackward) Alignment.CenterStart else Alignment.CenterEnd)
-                    .padding(horizontal = 28.dp),
+                    .padding(horizontal = 28.dp)
+                    .zIndex(2f),
         ) {
             AnimatedVisibility(
                 visible = feedbackVisible,
@@ -667,16 +693,15 @@ private fun PlayerStage(
                 Box(
                     modifier =
                         Modifier
-                            .size(76.dp)
-                            .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.4f))
-                            .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape),
+                            .size(84.dp)
+                            .clip(feedbackShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         text = if (feedbackBackward) "−10" else "+10",
                         style = MaterialTheme.typography.titleLarge,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
                     )
                 }
             }
@@ -688,6 +713,7 @@ private fun PlayerStage(
                     Modifier
                         .align(Alignment.Center)
                         .padding(24.dp)
+                        .zIndex(3f)
                         .clip(RoundedCornerShape(26.dp))
                         .background(Color.Black.copy(alpha = 0.55f))
                         .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(26.dp))

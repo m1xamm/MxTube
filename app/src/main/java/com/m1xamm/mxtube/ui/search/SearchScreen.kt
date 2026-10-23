@@ -1,3 +1,8 @@
+@file:OptIn(
+    androidx.compose.material3.ExperimentalMaterial3Api::class,
+    androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class,
+)
+
 package com.m1xamm.mxtube.ui.search
 
 import androidx.compose.foundation.background
@@ -10,14 +15,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -25,16 +29,21 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.ContainedLoadingIndicator
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -43,11 +52,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.m1xamm.mxtube.R
 import com.m1xamm.mxtube.data.youtube.VideoSummary
@@ -62,6 +73,8 @@ fun SearchScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val keyboard = LocalSoftwareKeyboardController.current
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val searchShape = MaterialShapes.Cookie6Sided.toShape()
 
     val submitSearch: (String) -> Unit = { query ->
         keyboard?.hide()
@@ -74,21 +87,40 @@ fun SearchScreen(
         }
     }
 
-    Box(
+    Scaffold(
         modifier =
             modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
-    ) {
+                .nestedScroll(scrollBehavior.nestedScrollConnection),
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            LargeFlexibleTopAppBar(
+                title = { Text(stringResource(R.string.app_name)) },
+                navigationIcon = {
+                    Box(Modifier.padding(start = 16.dp)) {
+                        BrandMark(Modifier.size(40.dp))
+                    }
+                },
+                colors =
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    ),
+                scrollBehavior = scrollBehavior,
+            )
+        },
+    ) { innerPadding ->
         Column(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .safeDrawingPadding(),
+                    .padding(innerPadding)
+                    .imePadding(),
         ) {
-            SearchHeader(
+            SearchRow(
                 input = state.input,
                 isLoading = state.phase == SearchPhase.Loading,
+                searchShape = searchShape,
                 onInputChange = viewModel::onQueryChange,
                 onClear = {
                     keyboard?.hide()
@@ -97,18 +129,21 @@ fun SearchScreen(
                 onSearch = { submitSearch(state.input) },
             )
 
-            if (state.phase == SearchPhase.Loading) {
-                LinearProgressIndicator(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .height(2.dp),
-                )
-            }
-
             when (state.phase) {
-                SearchPhase.Idle,
-                SearchPhase.Loading -> Spacer(Modifier.weight(1f))
+                SearchPhase.Idle -> Spacer(Modifier.weight(1f))
+
+                SearchPhase.Loading ->
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .weight(1f),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        ContainedLoadingIndicator(
+                            modifier = Modifier.size(72.dp),
+                        )
+                    }
 
                 SearchPhase.Error ->
                     MessageState(
@@ -116,7 +151,10 @@ fun SearchScreen(
                         message = stringResource(R.string.search_error_message),
                         modifier = Modifier.weight(1f),
                         action = {
-                            Button(onClick = viewModel::retry) {
+                            Button(
+                                onClick = viewModel::retry,
+                                shape = MaterialTheme.shapes.extraLarge,
+                            ) {
                                 Text(stringResource(R.string.retry))
                             }
                         },
@@ -167,9 +205,10 @@ fun SearchScreen(
 }
 
 @Composable
-private fun SearchHeader(
+private fun SearchRow(
     input: String,
     isLoading: Boolean,
+    searchShape: androidx.compose.ui.graphics.Shape,
     onInputChange: (String) -> Unit,
     onClear: () -> Unit,
     onSearch: () -> Unit,
@@ -178,17 +217,16 @@ private fun SearchHeader(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = 20.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        BrandMark()
-
-        Spacer(Modifier.width(10.dp))
-
         TextField(
             value = input,
             onValueChange = onInputChange,
-            modifier = Modifier.weight(1f),
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .height(60.dp),
             placeholder = {
                 Text(stringResource(R.string.search_hint))
             },
@@ -203,8 +241,8 @@ private fun SearchHeader(
                 }
             },
             singleLine = true,
-            shape = RoundedCornerShape(26.dp),
-            textStyle = MaterialTheme.typography.bodyLarge,
+            shape = RoundedCornerShape(30.dp),
+            textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp),
             colors =
                 TextFieldDefaults.colors(
                     focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -218,13 +256,13 @@ private fun SearchHeader(
             keyboardActions = KeyboardActions(onSearch = { onSearch() }),
         )
 
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(12.dp))
 
-        FilledTonalIconButton(
+        FilledIconButton(
             onClick = onSearch,
             enabled = input.isNotBlank() && !isLoading,
-            shape = CircleShape,
-            modifier = Modifier.size(48.dp),
+            shape = searchShape,
+            modifier = Modifier.size(60.dp),
         ) {
             Icon(
                 imageVector = Icons.Filled.Search,
@@ -245,14 +283,14 @@ private fun VideoList(
     LazyColumn(
         state = listState,
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         items(
             items = state.videos,
             key = { it.url },
         ) { video ->
-            VideoRow(
+            VideoCard(
                 video = video,
                 onClick = { onVideoClick(video) },
                 modifier = Modifier.animateItem(),
@@ -268,9 +306,9 @@ private fun VideoList(
                             .padding(vertical = 12.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
-                        strokeWidth = 2.dp,
+                    LoadingIndicator(
+                        modifier = Modifier.size(28.dp),
+                        color = MaterialTheme.colorScheme.primary,
                     )
                 }
             }
@@ -315,7 +353,7 @@ private fun MessageState(
     ) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center,
         )
