@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.m1xamm.mxtube.R
+import java.text.DecimalFormat
+import java.text.DecimalFormatSymbols
 import java.util.Locale
 
 fun formatTime(totalSeconds: Long): String {
@@ -43,6 +45,11 @@ fun viewsText(count: Long): String {
     } else {
         stringResource(R.string.video_views_compact, compactCount(safeCount))
     }
+}
+
+fun formatSpeed(speed: Float): String {
+    val formatter = DecimalFormat("0.##", DecimalFormatSymbols(Locale.forLanguageTag("ru")))
+    return "${formatter.format(speed)}×"
 }
 
 fun formatRelativeDate(epochMillis: Long): String {

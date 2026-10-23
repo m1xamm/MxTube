@@ -12,6 +12,10 @@
     <string name="video_views_compact">%1$s просмотров</string>
     <string name="load_more_error">Не удалось загрузить ещё</string>
     <string name="player_back">Назад</string>
+    <string name="player_settings">Настройки</string>
+    <string name="player_quality">Качество</string>
+    <string name="player_speed">Скорость</string>
+    <string name="close">Закрыть</string>
     <string name="player_play">Смотреть</string>
     <string name="player_pause">Пауза</string>
     <string name="player_fullscreen">На весь экран</string>

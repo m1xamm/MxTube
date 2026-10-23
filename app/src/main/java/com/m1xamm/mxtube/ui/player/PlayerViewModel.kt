@@ -9,6 +9,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class PlayerUiState(
@@ -50,5 +51,11 @@ class PlayerViewModel(
                     _uiState.value = PlayerUiState(isLoading = false, error = true)
                 }
             }
+    }
+
+    fun selectQuality(index: Int) {
+        val info = _uiState.value.info ?: return
+        if (index !in info.qualities.indices) return
+        _uiState.update { it.copy(selectedQualityIndex = index) }
     }
 }
