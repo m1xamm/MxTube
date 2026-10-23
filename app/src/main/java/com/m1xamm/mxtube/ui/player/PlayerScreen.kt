@@ -13,14 +13,13 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,8 +27,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -44,6 +45,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.toShape
@@ -60,8 +62,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -101,6 +101,8 @@ import com.m1xamm.mxtube.ui.common.formatTime
 import com.m1xamm.mxtube.ui.common.viewsText
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+
+private val PlayerChrome = Color(0xFF1B1B1F)
 
 @Composable
 fun PlayerScreen(
@@ -486,6 +488,15 @@ private fun PlayerStage(
                     },
         )
 
+        Box(
+            modifier =
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .windowInsetsTopHeight(WindowInsets.statusBars)
+                    .background(Color.Black.copy(alpha = 0.4f)),
+        )
+
         if (isBuffering) {
             LoadingIndicator(
                 modifier =
@@ -506,19 +517,6 @@ private fun PlayerStage(
             exit = fadeOut(),
         ) {
             Box(Modifier.fillMaxSize()) {
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .height(104.dp)
-                            .align(Alignment.TopCenter)
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent),
-                                ),
-                            ),
-                )
-
                 Row(
                     modifier =
                         Modifier
@@ -528,29 +526,36 @@ private fun PlayerStage(
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    GlassIconButton(
+                    PlayerIconButton(
                         icon = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = stringResource(R.string.player_back),
                         onClick = onBack,
                     )
 
                     if (isFullscreen) {
-                        Text(
-                            text = title,
+                        Surface(
                             modifier =
                                 Modifier
                                     .weight(1f)
                                     .padding(horizontal = 12.dp),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Color.White,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                            shape = RoundedCornerShape(50),
+                            color = PlayerChrome,
+                            contentColor = Color.White,
+                        ) {
+                            Text(
+                                text = title,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                style = MaterialTheme.typography.titleSmall,
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     } else {
                         Spacer(Modifier.weight(1f))
                     }
 
-                    GlassIconButton(
+                    PlayerIconButton(
                         icon = Icons.Filled.Settings,
                         contentDescription = stringResource(R.string.player_settings),
                         onClick = onOpenSettings,
@@ -561,50 +566,50 @@ private fun PlayerStage(
                     modifier = Modifier.align(Alignment.Center),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    GlassTextButton(
+                    SeekStepButton(
                         text = "−10",
                         onClick = { seekBy(-10_000L, false) },
                     )
 
                     Spacer(Modifier.width(18.dp))
 
-                    Box(
-                        modifier =
-                            Modifier
-                                .size(64.dp)
-                                .clip(playShape)
-                                .background(MaterialTheme.colorScheme.primary)
-                                .clickable(onClick = onPlayPause),
-                        contentAlignment = Alignment.Center,
+                    Surface(
+                        onClick = onPlayPause,
+                        modifier = Modifier.size(64.dp),
+                        shape = playShape,
+                        color = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
                     ) {
-                        AnimatedContent(
-                            targetState = isPlaying,
-                            transitionSpec = {
-                                fadeIn(tween(120)) togetherWith fadeOut(tween(90))
-                            },
-                            label = "playPause",
-                        ) { playing ->
-                            if (playing) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_pause),
-                                    contentDescription = stringResource(R.string.player_pause),
-                                    modifier = Modifier.size(30.dp),
-                                    tint = MaterialTheme.colorScheme.onPrimary,
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Filled.PlayArrow,
-                                    contentDescription = stringResource(R.string.player_play),
-                                    modifier = Modifier.size(36.dp),
-                                    tint = MaterialTheme.colorScheme.onPrimary,
-                                )
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            AnimatedContent(
+                                targetState = isPlaying,
+                                transitionSpec = {
+                                    fadeIn(tween(120)) togetherWith fadeOut(tween(90))
+                                },
+                                label = "playPause",
+                            ) { playing ->
+                                if (playing) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_pause),
+                                        contentDescription = stringResource(R.string.player_pause),
+                                        modifier = Modifier.size(30.dp),
+                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Filled.PlayArrow,
+                                        contentDescription = stringResource(R.string.player_play),
+                                        modifier = Modifier.size(36.dp),
+                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                    )
+                                }
                             }
                         }
                     }
 
                     Spacer(Modifier.width(18.dp))
 
-                    GlassTextButton(
+                    SeekStepButton(
                         text = "+10",
                         onClick = { seekBy(10_000L, false) },
                     )
@@ -618,60 +623,64 @@ private fun PlayerStage(
                             .then(if (isFullscreen) Modifier.navigationBarsPadding() else Modifier)
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                 ) {
-                    Row(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(30.dp))
-                                .background(Color.Black.copy(alpha = 0.45f))
-                                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(30.dp))
-                                .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(30.dp),
+                        color = PlayerChrome,
+                        contentColor = Color.White,
                     ) {
-                        Text(
-                            text = formatTime((if (isDragging) scrubPositionMs else positionMs) / 1000),
-                            modifier = Modifier.width(56.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White,
-                            maxLines = 1,
-                            softWrap = false,
-                        )
-
-                        VideoSeekBar(
-                            positionMs = positionMs,
-                            durationMs = durationMs,
-                            bufferedMs = bufferedMs,
-                            onSeek = onSeek,
-                            onDraggingChanged = onDraggingChanged,
-                            onScrubPositionChanged = { scrubPositionMs = it },
-                            modifier = Modifier.weight(1f),
-                        )
-
-                        Text(
-                            text = formatTime(durationMs / 1000),
-                            modifier = Modifier.width(56.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White,
-                            textAlign = TextAlign.Center,
-                            maxLines = 1,
-                            softWrap = false,
-                        )
-
-                        IconButton(
-                            onClick = onToggleFullscreen,
-                            modifier = Modifier.size(40.dp),
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Icon(
-                                painter =
-                                    painterResource(
-                                        if (isFullscreen) R.drawable.ic_fullscreen_exit else R.drawable.ic_fullscreen,
-                                    ),
-                                contentDescription =
-                                    stringResource(
-                                        if (isFullscreen) R.string.player_exit_fullscreen else R.string.player_fullscreen,
-                                    ),
-                                tint = Color.White,
+                            Text(
+                                text = formatTime((if (isDragging) scrubPositionMs else positionMs) / 1000),
+                                modifier = Modifier.width(56.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White,
+                                maxLines = 1,
+                                softWrap = false,
                             )
+
+                            VideoSeekBar(
+                                positionMs = positionMs,
+                                durationMs = durationMs,
+                                bufferedMs = bufferedMs,
+                                onSeek = onSeek,
+                                onDraggingChanged = onDraggingChanged,
+                                onScrubPositionChanged = { scrubPositionMs = it },
+                                modifier = Modifier.weight(1f),
+                            )
+
+                            Text(
+                                text = formatTime(durationMs / 1000),
+                                modifier = Modifier.width(56.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                softWrap = false,
+                            )
+
+                            IconButton(
+                                onClick = onToggleFullscreen,
+                                modifier = Modifier.size(40.dp),
+                            ) {
+                                Icon(
+                                    painter =
+                                        painterResource(
+                                            if (isFullscreen) R.drawable.ic_fullscreen_exit else R.drawable.ic_fullscreen,
+                                        ),
+                                    contentDescription =
+                                        stringResource(
+                                            if (isFullscreen) R.string.player_exit_fullscreen else R.string.player_fullscreen,
+                                        ),
+                                    tint = Color.White,
+                                )
+                            }
                         }
                     }
                 }
@@ -690,52 +699,56 @@ private fun PlayerStage(
                 enter = fadeIn(),
                 exit = fadeOut(),
             ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .size(84.dp)
-                            .clip(feedbackShape)
-                            .background(MaterialTheme.colorScheme.primaryContainer),
-                    contentAlignment = Alignment.Center,
+                Surface(
+                    modifier = Modifier.size(84.dp),
+                    shape = feedbackShape,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 ) {
-                    Text(
-                        text = if (feedbackBackward) "−10" else "+10",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    )
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = if (feedbackBackward) "−10" else "+10",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                    }
                 }
             }
         }
 
         if (playbackError) {
-            Column(
+            Surface(
                 modifier =
                     Modifier
                         .align(Alignment.Center)
                         .padding(24.dp)
-                        .zIndex(3f)
-                        .clip(RoundedCornerShape(26.dp))
-                        .background(Color.Black.copy(alpha = 0.55f))
-                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(26.dp))
-                        .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                        .zIndex(3f),
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                tonalElevation = 3.dp,
             ) {
-                Text(
-                    text = stringResource(R.string.playback_error_title),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = Color.White,
-                    textAlign = TextAlign.Center,
-                )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = stringResource(R.string.playback_error_message),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.72f),
-                    textAlign = TextAlign.Center,
-                )
-                Spacer(Modifier.height(14.dp))
-                Button(onClick = onRetry) {
-                    Text(stringResource(R.string.retry))
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = stringResource(R.string.playback_error_title),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.Center,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = stringResource(R.string.playback_error_message),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    Button(onClick = onRetry) {
+                        Text(stringResource(R.string.retry))
+                    }
                 }
             }
         }
@@ -743,49 +756,47 @@ private fun PlayerStage(
 }
 
 @Composable
-private fun GlassIconButton(
+private fun PlayerIconButton(
     icon: ImageVector,
     contentDescription: String,
     onClick: () -> Unit,
 ) {
-    Box(
-        modifier =
-            Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(Color.Black.copy(alpha = 0.38f))
-                .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
-                .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.size(44.dp),
+        shape = CircleShape,
+        color = PlayerChrome,
+        contentColor = Color.White,
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            tint = Color.White,
-        )
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = Color.White,
+            )
+        }
     }
 }
 
 @Composable
-private fun GlassTextButton(
+private fun SeekStepButton(
     text: String,
     onClick: () -> Unit,
 ) {
-    Box(
-        modifier =
-            Modifier
-                .size(54.dp)
-                .clip(CircleShape)
-                .background(Color.Black.copy(alpha = 0.38f))
-                .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
-                .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.size(54.dp),
+        shape = CircleShape,
+        color = PlayerChrome,
+        contentColor = Color.White,
     ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelMedium,
-            color = Color.White,
-        )
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White,
+            )
+        }
     }
 }
 
