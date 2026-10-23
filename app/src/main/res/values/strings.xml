@@ -1,0 +1,29 @@
+<resources>
+    <string name="app_name">MxTube</string>
+    <string name="search_hint">Поиск</string>
+    <string name="search_action">Найти</string>
+    <string name="search_clear">Очистить</string>
+    <string name="search_empty_title">Ничего не нашлось</string>
+    <string name="search_empty_message">Попробуй другой запрос или проверь раскладку.</string>
+    <string name="search_error_title">YouTube не отвечает</string>
+    <string name="search_error_message">Проверь интернет и попробуй ещё раз.</string>
+    <string name="retry">Повторить</string>
+    <string name="unknown_channel">Неизвестный канал</string>
+    <string name="video_views_compact">%1$s просмотров</string>
+    <string name="load_more_error">Не удалось загрузить ещё</string>
+    <string name="player_back">Назад</string>
+    <string name="player_play">Смотреть</string>
+    <string name="player_pause">Пауза</string>
+    <string name="player_fullscreen">На весь экран</string>
+    <string name="player_exit_fullscreen">Выйти из полного экрана</string>
+    <string name="player_error_title">Не удалось открыть видео</string>
+    <string name="playback_error_title">Видео не играет</string>
+    <string name="playback_error_message">Попробуй ещё раз.</string>
+
+    <plurals name="video_views">
+        <item quantity="one">%1$d просмотр</item>
+        <item quantity="few">%1$d просмотра</item>
+        <item quantity="many">%1$d просмотров</item>
+        <item quantity="other">%1$d просмотра</item>
+    </plurals>
+</resources>
