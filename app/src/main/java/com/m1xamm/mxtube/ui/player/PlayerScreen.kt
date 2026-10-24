@@ -547,7 +547,7 @@ private fun PlayerStage(
                 modifier =
                     Modifier
                         .align(Alignment.Center)
-                        .size(56.dp),
+                        .size(48.dp),
                 color = Color.White,
             )
         }
@@ -567,7 +567,7 @@ private fun PlayerStage(
                         Modifier
                             .fillMaxWidth()
                             .align(Alignment.TopStart)
-                            .padding(horizontal = 12.dp, vertical = 12.dp),
+                            .padding(horizontal = 6.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     PlayerIconButton(
@@ -619,7 +619,7 @@ private fun PlayerStage(
                     modifier =
                         Modifier
                             .align(Alignment.Center)
-                            .size(72.dp)
+                            .size(60.dp)
                             .clip(playShape)
                             .hazeBlur(
                                 input = HazeInput.Sources(hazeState),
@@ -646,7 +646,7 @@ private fun PlayerStage(
                             when (state) {
                                 PlayButtonState.Buffering ->
                                     LoadingIndicator(
-                                        modifier = Modifier.size(32.dp),
+                                        modifier = Modifier.size(28.dp),
                                         color = Color.White,
                                     )
 
@@ -654,7 +654,7 @@ private fun PlayerStage(
                                     Icon(
                                         painter = painterResource(R.drawable.ic_pause_rounded),
                                         contentDescription = stringResource(R.string.player_pause),
-                                        modifier = Modifier.size(34.dp),
+                                        modifier = Modifier.size(28.dp),
                                         tint = Color.White,
                                     )
 
@@ -662,7 +662,7 @@ private fun PlayerStage(
                                     Icon(
                                         painter = painterResource(R.drawable.ic_play_arrow_rounded),
                                         contentDescription = stringResource(R.string.player_play),
-                                        modifier = Modifier.size(40.dp),
+                                        modifier = Modifier.size(32.dp),
                                         tint = Color.White,
                                     )
                             }
@@ -676,18 +676,18 @@ private fun PlayerStage(
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
                             .then(if (isFullscreen) Modifier.navigationBarsPadding() else Modifier)
-                            .padding(horizontal = 12.dp, vertical = 12.dp),
+                            .padding(horizontal = 6.dp, vertical = 6.dp),
                 ) {
                     Surface(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(30.dp))
+                                .clip(RoundedCornerShape(20.dp))
                                 .hazeBlur(
                                     input = HazeInput.Sources(hazeState),
                                     style = HazeMaterials.ultraThin(),
                                 ),
-                        shape = RoundedCornerShape(30.dp),
+                        shape = RoundedCornerShape(20.dp),
                         color = Color.Transparent,
                         contentColor = chromeContent,
                     ) {
@@ -695,12 +695,12 @@ private fun PlayerStage(
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                                    .padding(horizontal = 6.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
                                 text = formatTime((if (isDragging) scrubPositionMs else positionMs) / 1000),
-                                modifier = Modifier.width(56.dp),
+                                modifier = Modifier.width(50.dp),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = chromeContent,
                                 maxLines = 1,
@@ -719,7 +719,7 @@ private fun PlayerStage(
 
                             Text(
                                 text = formatTime(durationMs / 1000),
-                                modifier = Modifier.width(56.dp),
+                                modifier = Modifier.width(50.dp),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = chromeContent,
                                 textAlign = TextAlign.Center,
@@ -729,7 +729,7 @@ private fun PlayerStage(
 
                             IconButton(
                                 onClick = onToggleFullscreen,
-                                modifier = Modifier.size(40.dp),
+                                modifier = Modifier.size(34.dp),
                             ) {
                                 AnimatedContent(
                                     targetState = isFullscreen,
@@ -752,6 +752,7 @@ private fun PlayerStage(
                                             stringResource(
                                                 if (fullscreen) R.string.player_exit_fullscreen else R.string.player_fullscreen,
                                             ),
+                                        modifier = Modifier.size(20.dp),
                                         tint = chromeContent,
                                     )
                                 }
@@ -775,7 +776,7 @@ private fun PlayerStage(
                 exit = fadeOut(),
             ) {
                 Surface(
-                    modifier = Modifier.size(84.dp),
+                    modifier = Modifier.size(64.dp),
                     shape = feedbackShape,
                     color = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -783,7 +784,7 @@ private fun PlayerStage(
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(
                             text = if (feedbackBackward) "−10" else "+10",
-                            style = MaterialTheme.typography.titleLarge,
+                            style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                         )
                     }
@@ -841,7 +842,7 @@ private fun PlayerIconButton(
         onClick = onClick,
         modifier =
             Modifier
-                .size(44.dp)
+                .size(40.dp)
                 .clip(CircleShape)
                 .hazeBlur(
                     input = HazeInput.Sources(hazeState),

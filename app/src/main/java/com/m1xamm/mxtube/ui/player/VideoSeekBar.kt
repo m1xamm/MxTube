@@ -52,7 +52,7 @@ fun VideoSeekBar(
         modifier =
             modifier
                 .fillMaxWidth()
-                .height(32.dp),
+                .height(28.dp),
     ) {
         LinearWavyProgressIndicator(
             progress = { shown },
