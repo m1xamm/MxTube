@@ -2,10 +2,16 @@
 
 package com.m1xamm.mxtube.ui.player
 
+import android.Manifest
 import android.content.Context
 import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.view.LayoutInflater
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
@@ -78,15 +84,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultDataSource
@@ -100,6 +105,8 @@ import com.m1xamm.mxtube.R
 import com.m1xamm.mxtube.data.youtube.PlaybackInfo
 import com.m1xamm.mxtube.data.youtube.PlaybackQuality
 import com.m1xamm.mxtube.data.youtube.VideoSummary
+import com.m1xamm.mxtube.playback.PlaybackHolder
+import com.m1xamm.mxtube.playback.PlaybackService
 import com.m1xamm.mxtube.ui.common.findActivity
 import com.m1xamm.mxtube.ui.common.formatRelativeDate
 import com.m1xamm.mxtube.ui.common.formatTime
@@ -132,9 +139,10 @@ fun PlayerScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
-    val lifecycleOwner = LocalLifecycleOwner.current
     val darkTheme = isSystemInDarkTheme()
-    val exoPlayer = remember(context) { ExoPlayer.Builder(context).build() }
+    val notificationPermission =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    val exoPlayer = remember(context) { PlaybackHolder.player(context) }
 
     var isFullscreen by rememberSaveable { mutableStateOf(false) }
     var controlsVisible by remember { mutableStateOf(true) }
@@ -162,17 +170,23 @@ fun PlayerScreen(
 
     BackHandler { handleBack() }
 
-    DisposableEffect(exoPlayer) {
-        onDispose { exoPlayer.release() }
+    LaunchedEffect(Unit) {
+        PlaybackService.start(context)
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 
-    DisposableEffect(lifecycleOwner, exoPlayer) {
-        val observer =
-            LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_STOP) exoPlayer.pause()
-            }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    LaunchedEffect(exoPlayer) {
+        isPlaying = exoPlayer.isPlaying
+        isBuffering = exoPlayer.playbackState == Player.STATE_BUFFERING
+        durationMs = exoPlayer.duration.coerceAtLeast(0)
     }
 
     DisposableEffect(exoPlayer) {
@@ -211,7 +225,7 @@ fun PlayerScreen(
         try {
             val resumePosition = if (hasSource) exoPlayer.currentPosition else 0L
             val resumePlaying = if (hasSource) exoPlayer.playWhenReady else true
-            val source = buildMediaSource(context, quality)
+            val source = buildMediaSource(context, quality, info)
 
             exoPlayer.setMediaSource(source)
             exoPlayer.prepare()
@@ -980,6 +994,7 @@ private fun PlayerErrorScreen(
 private fun buildMediaSource(
     context: Context,
     quality: PlaybackQuality,
+    info: PlaybackInfo,
 ): MediaSource {
     val httpDataSourceFactory =
         DefaultHttpDataSource.Factory()
@@ -987,12 +1002,24 @@ private fun buildMediaSource(
             .setAllowCrossProtocolRedirects(true)
     val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
 
+    val metadata =
+        MediaMetadata.Builder()
+            .setTitle(info.title.ifBlank { "MxTube" })
+            .setArtist(info.uploader)
+            .setArtworkUri(
+                info.thumbnailUrl
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let(Uri::parse),
+            )
+            .build()
+
     val videoSource =
         ProgressiveMediaSource.Factory(dataSourceFactory)
             .createMediaSource(
                 MediaItem.Builder()
                     .setUri(quality.videoUrl)
                     .setMimeType(quality.videoMimeType)
+                    .setMediaMetadata(metadata)
                     .build(),
             )
 

@@ -11,8 +11,8 @@ android {
         applicationId = "com.m1xamm.mxtube"
         minSdk = 26
         targetSdk = 37
-        versionCode = 12
-        versionName = "0.3.5"
+        versionCode = 13
+        versionName = "0.4.0"
     }
 
     buildTypes {
@@ -73,6 +73,7 @@ dependencies {
     implementation(libs.coil.network.okhttp)
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
+    implementation(libs.androidx.media3.session)
     implementation(libs.haze)
     implementation(libs.haze.blur)
     implementation(libs.haze.blur.materials)

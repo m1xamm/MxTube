@@ -24,6 +24,7 @@
     <string name="playback_error_title">Видео не играет</string>
     <string name="playback_error_message">Попробуй ещё раз.</string>
     <string name="more_from_search">Ещё по запросу</string>
+    <string name="playback_channel_name">Воспроизведение</string>
 
     <plurals name="video_views">
         <item quantity="one">%1$d просмотр</item>

@@ -18,9 +18,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.m1xamm.mxtube.data.youtube.VideoSummary
+import com.m1xamm.mxtube.playback.PlaybackHolder
+import com.m1xamm.mxtube.playback.PlaybackService
 import com.m1xamm.mxtube.ui.player.PlayerScreen
 import com.m1xamm.mxtube.ui.search.SearchScreen
 import com.m1xamm.mxtube.ui.search.SearchViewModel
@@ -29,6 +32,7 @@ import com.m1xamm.mxtube.ui.search.SearchViewModel
 fun MxTubeApp() {
     var selectedVideo by remember { mutableStateOf<VideoSummary?>(null) }
     var shownVideo by remember { mutableStateOf<VideoSummary?>(null) }
+    val context = LocalContext.current
     val searchViewModel: SearchViewModel = viewModel { SearchViewModel() }
     val searchState by searchViewModel.uiState.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
@@ -77,7 +81,11 @@ fun MxTubeApp() {
                             shownVideo = next
                             selectedVideo = next
                         },
-                        onBack = { selectedVideo = null },
+                        onBack = {
+                            PlaybackHolder.stop()
+                            PlaybackService.stop(context)
+                            selectedVideo = null
+                        },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
