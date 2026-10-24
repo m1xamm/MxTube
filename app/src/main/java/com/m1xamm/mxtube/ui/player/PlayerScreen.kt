@@ -150,7 +150,6 @@ fun PlayerScreen(
     var isBuffering by remember { mutableStateOf(false) }
     var durationMs by remember { mutableLongStateOf(0L) }
     var positionMs by remember { mutableLongStateOf(0L) }
-    var bufferedMs by remember { mutableLongStateOf(0L) }
     var isDragging by remember { mutableStateOf(false) }
     var speed by rememberSaveable { mutableFloatStateOf(1f) }
     var settingsOpen by remember { mutableStateOf(false) }
@@ -244,7 +243,6 @@ fun PlayerScreen(
         while (isActive) {
             if (!isDragging) {
                 positionMs = exoPlayer.currentPosition
-                bufferedMs = exoPlayer.bufferedPosition
             }
             delay(500)
         }
@@ -361,7 +359,6 @@ fun PlayerScreen(
                         reloadToken++
                     },
                     positionMs = positionMs,
-                    bufferedMs = bufferedMs,
                     durationMs = durationMs,
                     isDragging = isDragging,
                     onSeek = onSeek,
@@ -396,7 +393,6 @@ fun PlayerScreen(
                             reloadToken++
                         },
                         positionMs = positionMs,
-                        bufferedMs = bufferedMs,
                         durationMs = durationMs,
                         isDragging = isDragging,
                         onSeek = onSeek,
@@ -451,7 +447,6 @@ private fun PlayerStage(
     playbackError: Boolean,
     onRetry: () -> Unit,
     positionMs: Long,
-    bufferedMs: Long,
     durationMs: Long,
     isDragging: Boolean,
     onSeek: (Long) -> Unit,
@@ -715,7 +710,6 @@ private fun PlayerStage(
                             VideoSeekBar(
                                 positionMs = positionMs,
                                 durationMs = durationMs,
-                                bufferedMs = bufferedMs,
                                 isPlaying = isPlaying,
                                 onSeek = onSeek,
                                 onDraggingChanged = onDraggingChanged,
