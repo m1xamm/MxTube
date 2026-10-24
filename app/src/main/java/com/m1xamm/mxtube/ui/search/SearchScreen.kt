@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+
 package com.m1xamm.mxtube.ui.search
 
 import androidx.compose.animation.animateColorAsState
@@ -28,16 +30,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -53,6 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -101,27 +101,27 @@ fun SearchScreen(
             onSearch = { submitSearch(state.input) },
         )
 
-        if (state.phase == SearchPhase.Loading) {
-            LinearProgressIndicator(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(2.dp),
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-            )
-        } else {
-            HorizontalDivider(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                thickness = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
-            )
-        }
+        HorizontalDivider(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            thickness = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+        )
 
         when (state.phase) {
             SearchPhase.Idle -> Spacer(Modifier.weight(1f))
 
-            SearchPhase.Loading -> Spacer(Modifier.weight(1f))
+            SearchPhase.Loading ->
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .weight(1f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    ContainedLoadingIndicator(
+                        modifier = Modifier.size(64.dp),
+                    )
+                }
 
             SearchPhase.Error ->
                 MessageState(
@@ -223,6 +223,16 @@ private fun SearchHeader(
                 animationSpec = tween(160),
                 label = "search-cluster-color",
             )
+        val buttonCorner by
+            animateDpAsState(
+                targetValue = if (focused) 16.dp else 24.dp,
+                animationSpec =
+                    spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                label = "search-button-corner",
+            )
 
         Surface(
             modifier =
@@ -253,7 +263,7 @@ private fun SearchHeader(
                         if (input.isNotEmpty()) {
                             IconButton(onClick = onClear) {
                                 Icon(
-                                    imageVector = Icons.Filled.Close,
+                                    painter = painterResource(R.drawable.ic_close_rounded),
                                     contentDescription = stringResource(R.string.search_clear),
                                 )
                             }
@@ -280,11 +290,11 @@ private fun SearchHeader(
                 FilledIconButton(
                     onClick = onSearch,
                     enabled = input.isNotBlank() && !isLoading,
-                    shape = CircleShape,
+                    shape = RoundedCornerShape(buttonCorner),
                     modifier = Modifier.size(48.dp),
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.Search,
+                        painter = painterResource(R.drawable.ic_search_rounded),
                         contentDescription = stringResource(R.string.search_action),
                         modifier = Modifier.size(22.dp),
                     )
@@ -306,15 +316,15 @@ private fun VideoList(
         state = listState,
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         items(
-            items = state.videos,
-            key = { it.url },
-        ) { video ->
-            VideoRow(
-                video = video,
-                onClick = { onVideoClick(video) },
+            items = state.videos.chunked(VIDEO_CLUSTER_SIZE),
+            key = { it.first().url },
+        ) { group ->
+            VideoCluster(
+                videos = group,
+                onVideoClick = onVideoClick,
                 modifier = Modifier.animateItem(),
             )
         }

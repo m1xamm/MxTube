@@ -1,0 +1,4 @@
+Material Symbols Rounded icons
+Copyright Google LLC
+Source: https://fonts.google.com/icons
+Licensed under the Apache License, Version 2.0 (see Apache-2.0.txt).

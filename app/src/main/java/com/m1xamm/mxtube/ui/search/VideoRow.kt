@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.m1xamm.mxtube.R
@@ -46,6 +47,8 @@ fun VideoRow(
     video: VideoSummary,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    topCorner: Dp = 28.dp,
+    bottomCorner: Dp = 28.dp,
 ) {
     val placeholder = ColorPainter(MaterialTheme.colorScheme.surfaceContainerHighest)
     val duration = formatDuration(video.durationSeconds)
@@ -60,15 +63,25 @@ fun VideoRow(
 
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
-    val cornerRadius by
+    val animatedTopCorner by
         animateDpAsState(
-            targetValue = if (pressed) 20.dp else 28.dp,
+            targetValue = if (pressed) maxOf(2.dp, topCorner - 6.dp) else topCorner,
             animationSpec =
                 spring(
                     dampingRatio = Spring.DampingRatioMediumBouncy,
                     stiffness = Spring.StiffnessMediumLow,
                 ),
-            label = "video-cluster-corner",
+            label = "video-cluster-top-corner",
+        )
+    val animatedBottomCorner by
+        animateDpAsState(
+            targetValue = if (pressed) maxOf(2.dp, bottomCorner - 6.dp) else bottomCorner,
+            animationSpec =
+                spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            label = "video-cluster-bottom-corner",
         )
     val scale by
         animateFloatAsState(
@@ -91,7 +104,13 @@ fun VideoRow(
                     scaleX = scale
                     scaleY = scale
                 },
-        shape = RoundedCornerShape(cornerRadius),
+        shape =
+            RoundedCornerShape(
+                topStart = animatedTopCorner,
+                topEnd = animatedTopCorner,
+                bottomStart = animatedBottomCorner,
+                bottomEnd = animatedBottomCorner,
+            ),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = 1.dp,

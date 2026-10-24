@@ -1,5 +1,8 @@
 package com.m1xamm.mxtube.ui.player
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -7,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -14,15 +18,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import kotlin.math.PI
+import kotlin.math.sin
+import kotlinx.coroutines.isActive
 
 @Composable
 fun VideoSeekBar(
     positionMs: Long,
     durationMs: Long,
     bufferedMs: Long,
+    isPlaying: Boolean,
     onSeek: (Long) -> Unit,
     onDraggingChanged: (Boolean) -> Unit,
     onScrubPositionChanged: (Long) -> Unit = {},
@@ -47,6 +57,21 @@ fun VideoSeekBar(
     val trackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f)
     val bufferedColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
     val progressColor = MaterialTheme.colorScheme.primary
+    val wavePhase = remember { Animatable(0f) }
+
+    LaunchedEffect(isPlaying) {
+        if (!isPlaying) {
+            wavePhase.snapTo(0f)
+            return@LaunchedEffect
+        }
+        while (isActive) {
+            wavePhase.snapTo(0f)
+            wavePhase.animateTo(
+                targetValue = (2f * PI).toFloat(),
+                animationSpec = tween(durationMillis = 1400, easing = LinearEasing),
+            )
+        }
+    }
 
     Canvas(
         modifier =
@@ -88,7 +113,11 @@ fun VideoSeekBar(
         val inset = 6.dp.toPx()
         val trackWidth = (size.width - inset * 2f).coerceAtLeast(0f)
         val trackHeight = 2.5.dp.toPx()
+        val progressHeight = 3.dp.toPx()
         val thumbRadius = 5.dp.toPx()
+        val amplitude = 2.5.dp.toPx()
+        val wavelength = 24.dp.toPx()
+        val progressEnd = inset + trackWidth * shown
 
         drawLine(
             color = trackColor,
@@ -108,18 +137,42 @@ fun VideoSeekBar(
             )
         }
 
-        drawLine(
-            color = progressColor,
-            start = Offset(inset, centerY),
-            end = Offset(inset + trackWidth * shown, centerY),
-            strokeWidth = trackHeight,
-            cap = StrokeCap.Round,
-        )
+        var endY = centerY
+        if (shown > 0f) {
+            val path = Path()
+            val step = 1.5.dp.toPx()
+            val edgeFade = 8.dp.toPx()
+            var x = inset
+            var first = true
+            while (x <= progressEnd) {
+                val fromStart = x - inset
+                val toEnd = progressEnd - x
+                val taper = (minOf(fromStart, toEnd) / edgeFade).coerceIn(0f, 1f)
+                val y =
+                    centerY +
+                        sin((fromStart / wavelength) * 2f * PI.toFloat() + wavePhase.value) *
+                        amplitude * taper
+                if (first) {
+                    path.moveTo(x, y)
+                    first = false
+                } else {
+                    path.lineTo(x, y)
+                }
+                endY = y
+                x += step
+            }
+            path.lineTo(progressEnd, endY)
+            drawPath(
+                path = path,
+                color = progressColor,
+                style = Stroke(width = progressHeight, cap = StrokeCap.Round),
+            )
+        }
 
         drawCircle(
             color = progressColor,
             radius = thumbRadius,
-            center = Offset(inset + trackWidth * shown, centerY),
+            center = Offset(progressEnd, endY),
         )
     }
 }

@@ -14,6 +14,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -42,10 +44,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -69,9 +67,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -108,7 +106,14 @@ import com.m1xamm.mxtube.ui.common.formatRelativeDate
 import com.m1xamm.mxtube.ui.common.formatSpeed
 import com.m1xamm.mxtube.ui.common.formatTime
 import com.m1xamm.mxtube.ui.common.viewsText
-import com.m1xamm.mxtube.ui.search.VideoRow
+import com.m1xamm.mxtube.ui.search.VIDEO_CLUSTER_SIZE
+import com.m1xamm.mxtube.ui.search.VideoCluster
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.blur.hazeBlur
+import dev.chrisbanes.haze.blur.materials.HazeMaterials
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
@@ -262,7 +267,7 @@ fun PlayerScreen(
             activity?.let {
                 WindowCompat.getInsetsController(it.window, it.window.decorView)
             }
-        controller?.isAppearanceLightStatusBars = false
+        controller?.isAppearanceLightStatusBars = !darkTheme
         controller?.isAppearanceLightNavigationBars = !darkTheme
 
         onDispose {
@@ -360,6 +365,8 @@ fun PlayerScreen(
                             .fillMaxSize()
                             .background(MaterialTheme.colorScheme.background),
                 ) {
+                    Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+
                     PlayerStage(
                         exoPlayer = exoPlayer,
                         title = info.title.ifBlank { video.title },
@@ -450,6 +457,7 @@ private fun PlayerStage(
     var scrubPositionMs by remember { mutableLongStateOf(positionMs) }
     val playShape = MaterialShapes.Cookie9Sided.toShape()
     val feedbackShape = MaterialShapes.Cookie9Sided.toShape()
+    val hazeState = rememberHazeState()
     val playInteractionSource = remember { MutableInteractionSource() }
     val playPressed by playInteractionSource.collectIsPressedAsState()
     val playScale by
@@ -462,7 +470,6 @@ private fun PlayerStage(
                 ),
             label = "play-scale",
         )
-    val chromeColor = MaterialTheme.colorScheme.surfaceContainerHigh
     val chromeContent = MaterialTheme.colorScheme.onSurface
     val playButtonState =
         when {
@@ -508,7 +515,10 @@ private fun PlayerStage(
                 }
             },
             update = { it.player = exoPlayer },
-            modifier = Modifier.fillMaxSize(),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .hazeSource(hazeState),
         )
 
         Box(
@@ -527,15 +537,6 @@ private fun PlayerStage(
                             },
                         )
                     },
-        )
-
-        Box(
-            modifier =
-                Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .windowInsetsTopHeight(WindowInsets.statusBars)
-                    .background(Color.Black.copy(alpha = 0.4f)),
         )
 
         if (isBuffering && !controlsVisible) {
@@ -563,14 +564,14 @@ private fun PlayerStage(
                         Modifier
                             .fillMaxWidth()
                             .align(Alignment.TopStart)
-                            .statusBarsPadding()
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     PlayerIconButton(
-                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        iconRes = R.drawable.ic_arrow_back_rounded,
                         contentDescription = stringResource(R.string.player_back),
                         onClick = onBack,
+                        hazeState = hazeState,
                     )
 
                     if (isFullscreen) {
@@ -578,9 +579,14 @@ private fun PlayerStage(
                             modifier =
                                 Modifier
                                     .weight(1f)
-                                    .padding(horizontal = 12.dp),
+                                    .padding(horizontal = 12.dp)
+                                    .clip(RoundedCornerShape(50))
+                                    .hazeBlur(
+                                        input = HazeInput.Sources(hazeState),
+                                        style = HazeMaterials.ultraThin(),
+                                    ),
                             shape = RoundedCornerShape(50),
-                            color = chromeColor,
+                            color = Color.Transparent,
                             contentColor = chromeContent,
                         ) {
                             Text(
@@ -597,84 +603,61 @@ private fun PlayerStage(
                     }
 
                     PlayerIconButton(
-                        icon = Icons.Filled.Settings,
+                        iconRes = R.drawable.ic_settings_rounded,
                         contentDescription = stringResource(R.string.player_settings),
                         onClick = onOpenSettings,
+                        hazeState = hazeState,
                     )
                 }
 
                 Surface(
-                    modifier = Modifier.align(Alignment.Center),
-                    shape = RoundedCornerShape(36.dp),
-                    color = chromeColor,
-                    contentColor = chromeContent,
+                    onClick = onPlayPause,
+                    interactionSource = playInteractionSource,
+                    modifier =
+                        Modifier
+                            .align(Alignment.Center)
+                            .size(72.dp)
+                            .graphicsLayer {
+                                scaleX = playScale
+                                scaleY = playScale
+                            },
+                    shape = playShape,
+                    color = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
                 ) {
-                    Row(
-                        modifier = Modifier.padding(6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        SeekStepButton(
-                            text = "−10",
-                            onClick = { seekBy(-10_000L, false) },
-                        )
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        AnimatedContent(
+                            targetState = playButtonState,
+                            transitionSpec = {
+                                (fadeIn(tween(120)) + scaleIn(tween(120), initialScale = 0.7f)) togetherWith
+                                    (fadeOut(tween(90)) + scaleOut(tween(90), targetScale = 0.7f))
+                            },
+                            label = "playPause",
+                        ) { state ->
+                            when (state) {
+                                PlayButtonState.Buffering ->
+                                    LoadingIndicator(
+                                        modifier = Modifier.size(32.dp),
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                    )
 
-                        Spacer(Modifier.width(6.dp))
+                                PlayButtonState.Playing ->
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_pause_rounded),
+                                        contentDescription = stringResource(R.string.player_pause),
+                                        modifier = Modifier.size(34.dp),
+                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                    )
 
-                        Surface(
-                            onClick = onPlayPause,
-                            interactionSource = playInteractionSource,
-                            modifier =
-                                Modifier
-                                    .size(60.dp)
-                                    .graphicsLayer {
-                                        scaleX = playScale
-                                        scaleY = playScale
-                                    },
-                            shape = playShape,
-                            color = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                        ) {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                AnimatedContent(
-                                    targetState = playButtonState,
-                                    transitionSpec = {
-                                        fadeIn(tween(120)) togetherWith fadeOut(tween(90))
-                                    },
-                                    label = "playPause",
-                                ) { state ->
-                                    when (state) {
-                                        PlayButtonState.Buffering ->
-                                            LoadingIndicator(
-                                                modifier = Modifier.size(28.dp),
-                                                color = MaterialTheme.colorScheme.onPrimary,
-                                            )
-
-                                        PlayButtonState.Playing ->
-                                            Icon(
-                                                painter = painterResource(R.drawable.ic_pause),
-                                                contentDescription = stringResource(R.string.player_pause),
-                                                modifier = Modifier.size(30.dp),
-                                                tint = MaterialTheme.colorScheme.onPrimary,
-                                            )
-
-                                        PlayButtonState.Paused ->
-                                            Icon(
-                                                imageVector = Icons.Filled.PlayArrow,
-                                                contentDescription = stringResource(R.string.player_play),
-                                                modifier = Modifier.size(36.dp),
-                                                tint = MaterialTheme.colorScheme.onPrimary,
-                                            )
-                                    }
-                                }
+                                PlayButtonState.Paused ->
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_play_arrow_rounded),
+                                        contentDescription = stringResource(R.string.player_play),
+                                        modifier = Modifier.size(40.dp),
+                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                    )
                             }
                         }
-
-                        Spacer(Modifier.width(6.dp))
-
-                        SeekStepButton(
-                            text = "+10",
-                            onClick = { seekBy(10_000L, false) },
-                        )
                     }
                 }
 
@@ -687,9 +670,16 @@ private fun PlayerStage(
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                 ) {
                     Surface(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(30.dp))
+                                .hazeBlur(
+                                    input = HazeInput.Sources(hazeState),
+                                    style = HazeMaterials.ultraThin(),
+                                ),
                         shape = RoundedCornerShape(30.dp),
-                        color = chromeColor,
+                        color = Color.Transparent,
                         contentColor = chromeContent,
                     ) {
                         Row(
@@ -712,6 +702,7 @@ private fun PlayerStage(
                                 positionMs = positionMs,
                                 durationMs = durationMs,
                                 bufferedMs = bufferedMs,
+                                isPlaying = isPlaying,
                                 onSeek = onSeek,
                                 onDraggingChanged = onDraggingChanged,
                                 onScrubPositionChanged = { scrubPositionMs = it },
@@ -732,17 +723,30 @@ private fun PlayerStage(
                                 onClick = onToggleFullscreen,
                                 modifier = Modifier.size(40.dp),
                             ) {
-                                Icon(
-                                    painter =
-                                        painterResource(
-                                            if (isFullscreen) R.drawable.ic_fullscreen_exit else R.drawable.ic_fullscreen,
-                                        ),
-                                    contentDescription =
-                                        stringResource(
-                                            if (isFullscreen) R.string.player_exit_fullscreen else R.string.player_fullscreen,
-                                        ),
-                                    tint = chromeContent,
-                                )
+                                AnimatedContent(
+                                    targetState = isFullscreen,
+                                    transitionSpec = {
+                                        (fadeIn(tween(150)) + scaleIn(tween(150), initialScale = 0.75f)) togetherWith
+                                            (fadeOut(tween(100)) + scaleOut(tween(100), targetScale = 0.75f))
+                                    },
+                                    label = "fullscreenIcon",
+                                ) { fullscreen ->
+                                    Icon(
+                                        painter =
+                                            painterResource(
+                                                if (fullscreen) {
+                                                    R.drawable.ic_fullscreen_exit_rounded
+                                                } else {
+                                                    R.drawable.ic_fullscreen_rounded
+                                                },
+                                            ),
+                                        contentDescription =
+                                            stringResource(
+                                                if (fullscreen) R.string.player_exit_fullscreen else R.string.player_fullscreen,
+                                            ),
+                                        tint = chromeContent,
+                                    )
+                                }
                             }
                         }
                     }
@@ -820,44 +824,30 @@ private fun PlayerStage(
 
 @Composable
 private fun PlayerIconButton(
-    icon: ImageVector,
+    iconRes: Int,
     contentDescription: String,
     onClick: () -> Unit,
+    hazeState: HazeState,
 ) {
     Surface(
         onClick = onClick,
-        modifier = Modifier.size(44.dp),
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-    ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                tint = MaterialTheme.colorScheme.onSurface,
-            )
-        }
-    }
-}
-
-@Composable
-private fun SeekStepButton(
-    text: String,
-    onClick: () -> Unit,
-) {
-    Surface(
-        onClick = onClick,
-        modifier = Modifier.size(48.dp),
+        modifier =
+            Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .hazeBlur(
+                    input = HazeInput.Sources(hazeState),
+                    style = HazeMaterials.ultraThin(),
+                ),
         shape = CircleShape,
         color = Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurface,
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = contentDescription,
+                tint = MaterialTheme.colorScheme.onSurface,
             )
         }
     }
@@ -924,12 +914,14 @@ private fun PlayerDetails(
                     PlayerActionTile(
                         label = stringResource(R.string.player_quality),
                         value = qualityLabel,
+                        iconRes = R.drawable.ic_high_quality_rounded,
                         onClick = onOpenSettings,
                         modifier = Modifier.weight(1f),
                     )
                     PlayerActionTile(
                         label = stringResource(R.string.player_speed),
                         value = formatSpeed(speed),
+                        iconRes = R.drawable.ic_speed_rounded,
                         onClick = onOpenSettings,
                         modifier = Modifier.weight(1f),
                     )
@@ -948,12 +940,12 @@ private fun PlayerDetails(
             }
 
             items(
-                items = related,
-                key = { it.url },
-            ) { item ->
-                VideoRow(
-                    video = item,
-                    onClick = { onRelatedClick(item) },
+                items = related.chunked(VIDEO_CLUSTER_SIZE),
+                key = { it.first().url },
+            ) { group ->
+                VideoCluster(
+                    videos = group,
+                    onVideoClick = onRelatedClick,
                     modifier = Modifier.animateItem(),
                 )
             }
@@ -965,6 +957,7 @@ private fun PlayerDetails(
 private fun PlayerActionTile(
     label: String,
     value: String,
+    iconRes: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -979,11 +972,20 @@ private fun PlayerActionTile(
         Column(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
         ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = label,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                Icon(
+                    painter = painterResource(iconRes),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            }
             Spacer(Modifier.height(4.dp))
             Text(
                 text = value,
@@ -1015,7 +1017,7 @@ private fun PlayerErrorScreen(
                     .padding(8.dp),
         ) {
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                painter = painterResource(R.drawable.ic_arrow_back_rounded),
                 contentDescription = stringResource(R.string.player_back),
                 tint = Color.White,
             )
