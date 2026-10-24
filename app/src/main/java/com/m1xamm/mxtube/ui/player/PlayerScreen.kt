@@ -567,7 +567,7 @@ private fun PlayerStage(
                         Modifier
                             .fillMaxWidth()
                             .align(Alignment.TopStart)
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     PlayerIconButton(
@@ -695,7 +695,7 @@ private fun PlayerStage(
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
-                                    .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(

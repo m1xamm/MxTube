@@ -43,7 +43,7 @@ fun VideoSeekBar(
     val shown = if (dragging) dragFraction else progress
     val amplitude: (Float) -> Float =
         if (isPlaying) {
-            { progress -> WavyProgressIndicatorDefaults.indicatorAmplitude(progress) * 0.35f }
+            { progress -> WavyProgressIndicatorDefaults.indicatorAmplitude(progress) * 0.22f }
         } else {
             { 0f }
         }
@@ -60,7 +60,6 @@ fun VideoSeekBar(
             color = MaterialTheme.colorScheme.primary,
             trackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
             amplitude = amplitude,
-            wavelength = 24.dp,
         )
 
         Box(

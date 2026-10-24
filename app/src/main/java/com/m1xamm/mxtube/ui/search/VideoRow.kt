@@ -48,7 +48,7 @@ fun VideoRow(
     topCorner: Dp = 28.dp,
     bottomCorner: Dp = 28.dp,
 ) {
-    val placeholder = ColorPainter(MaterialTheme.colorScheme.surfaceContainerHighest)
+    val placeholder = ColorPainter(MaterialTheme.colorScheme.surfaceContainerHigh)
     val duration = formatDuration(video.durationSeconds)
     val channel = video.uploader.ifBlank { stringResource(R.string.unknown_channel) }
     val views = if (video.viewCount >= 0) compactCount(video.viewCount) else ""
@@ -92,7 +92,7 @@ fun VideoRow(
                 bottomStart = animatedBottomCorner,
                 bottomEnd = animatedBottomCorner,
             ),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
         contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = 1.dp,
     ) {
@@ -109,7 +109,7 @@ fun VideoRow(
                         .width(140.dp)
                         .aspectRatio(16f / 9f)
                         .clip(RoundedCornerShape(18.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh),
             ) {
                 AsyncImage(
                     model = video.thumbnailUrl,
