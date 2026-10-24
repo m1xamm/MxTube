@@ -24,6 +24,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -611,6 +612,14 @@ private fun PlayerStage(
                         onClick = onOpenSettings,
                         hazeState = hazeState,
                     )
+
+                    Spacer(Modifier.width(8.dp))
+
+                    PlayerFullscreenButton(
+                        isFullscreen = isFullscreen,
+                        onClick = onToggleFullscreen,
+                        hazeState = hazeState,
+                    )
                 }
 
                 Surface(
@@ -703,6 +712,7 @@ private fun PlayerStage(
                                 modifier = Modifier.width(50.dp),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = chromeContent,
+                                textAlign = TextAlign.Center,
                                 maxLines = 1,
                                 softWrap = false,
                             )
@@ -726,37 +736,6 @@ private fun PlayerStage(
                                 maxLines = 1,
                                 softWrap = false,
                             )
-
-                            IconButton(
-                                onClick = onToggleFullscreen,
-                                modifier = Modifier.size(34.dp),
-                            ) {
-                                AnimatedContent(
-                                    targetState = isFullscreen,
-                                    transitionSpec = {
-                                        (fadeIn(tween(150)) + scaleIn(tween(150), initialScale = 0.75f)) togetherWith
-                                            (fadeOut(tween(100)) + scaleOut(tween(100), targetScale = 0.75f))
-                                    },
-                                    label = "fullscreenIcon",
-                                ) { fullscreen ->
-                                    Icon(
-                                        painter =
-                                            painterResource(
-                                                if (fullscreen) {
-                                                    R.drawable.ic_fullscreen_exit_rounded
-                                                } else {
-                                                    R.drawable.ic_fullscreen_rounded
-                                                },
-                                            ),
-                                        contentDescription =
-                                            stringResource(
-                                                if (fullscreen) R.string.player_exit_fullscreen else R.string.player_fullscreen,
-                                            ),
-                                        modifier = Modifier.size(20.dp),
-                                        tint = chromeContent,
-                                    )
-                                }
-                            }
                         }
                     }
                 }
@@ -838,24 +817,67 @@ private fun PlayerIconButton(
     onClick: () -> Unit,
     hazeState: HazeState,
 ) {
-    Surface(
-        onClick = onClick,
+    Box(
         modifier =
             Modifier
-                .size(40.dp)
+                .size(32.dp)
                 .clip(CircleShape)
                 .hazeBlur(
                     input = HazeInput.Sources(hazeState),
                     style = HazeMaterials.ultraThin(),
-                ),
-        shape = CircleShape,
-        color = Color.Transparent,
-        contentColor = MaterialTheme.colorScheme.onSurface,
+                )
+                .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
     ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = contentDescription,
+            modifier = Modifier.size(20.dp),
+            tint = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+@Composable
+private fun PlayerFullscreenButton(
+    isFullscreen: Boolean,
+    onClick: () -> Unit,
+    hazeState: HazeState,
+) {
+    Box(
+        modifier =
+            Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .hazeBlur(
+                    input = HazeInput.Sources(hazeState),
+                    style = HazeMaterials.ultraThin(),
+                )
+                .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        AnimatedContent(
+            targetState = isFullscreen,
+            transitionSpec = {
+                (fadeIn(tween(150)) + scaleIn(tween(150), initialScale = 0.75f)) togetherWith
+                    (fadeOut(tween(100)) + scaleOut(tween(100), targetScale = 0.75f))
+            },
+            label = "fullscreenIcon",
+        ) { fullscreen ->
             Icon(
-                painter = painterResource(iconRes),
-                contentDescription = contentDescription,
+                painter =
+                    painterResource(
+                        if (fullscreen) {
+                            R.drawable.ic_fullscreen_exit_rounded
+                        } else {
+                            R.drawable.ic_fullscreen_rounded
+                        },
+                    ),
+                contentDescription =
+                    stringResource(
+                        if (fullscreen) R.string.player_exit_fullscreen else R.string.player_fullscreen,
+                    ),
+                modifier = Modifier.size(20.dp),
                 tint = MaterialTheme.colorScheme.onSurface,
             )
         }

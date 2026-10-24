@@ -11,8 +11,8 @@ android {
         applicationId = "com.m1xamm.mxtube"
         minSdk = 26
         targetSdk = 37
-        versionCode = 17
-        versionName = "0.4.4"
+        versionCode = 18
+        versionName = "0.4.41"
     }
 
     buildTypes {
