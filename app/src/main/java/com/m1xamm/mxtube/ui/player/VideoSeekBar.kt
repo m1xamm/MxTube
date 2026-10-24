@@ -54,7 +54,7 @@ fun VideoSeekBar(
             0f
         }
     val shown = if (dragging) dragFraction else progress
-    val trackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f)
+    val trackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
     val bufferedColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
     val progressColor = MaterialTheme.colorScheme.primary
     val wavePhase = remember { Animatable(0f) }
@@ -117,36 +117,17 @@ fun VideoSeekBar(
         val thumbRadius = 5.dp.toPx()
         val amplitude = 2.5.dp.toPx()
         val wavelength = 24.dp.toPx()
-        val progressEnd = inset + trackWidth * shown
+        val step = 1.5.dp.toPx()
+        val edgeFade = 8.dp.toPx()
 
-        drawLine(
-            color = trackColor,
-            start = Offset(inset, centerY),
-            end = Offset(inset + trackWidth, centerY),
-            strokeWidth = trackHeight,
-            cap = StrokeCap.Round,
-        )
-
-        if (buffered > 0f) {
-            drawLine(
-                color = bufferedColor,
-                start = Offset(inset, centerY),
-                end = Offset(inset + trackWidth * buffered, centerY),
-                strokeWidth = trackHeight,
-                cap = StrokeCap.Round,
-            )
-        }
-
-        var endY = centerY
-        if (shown > 0f) {
+        fun wavePath(endX: Float): Path {
             val path = Path()
-            val step = 1.5.dp.toPx()
-            val edgeFade = 8.dp.toPx()
+            if (endX <= inset) return path
             var x = inset
             var first = true
-            while (x <= progressEnd) {
+            while (x <= endX) {
                 val fromStart = x - inset
-                val toEnd = progressEnd - x
+                val toEnd = endX - x
                 val taper = (minOf(fromStart, toEnd) / edgeFade).coerceIn(0f, 1f)
                 val y =
                     centerY +
@@ -158,12 +139,29 @@ fun VideoSeekBar(
                 } else {
                     path.lineTo(x, y)
                 }
-                endY = y
                 x += step
             }
-            path.lineTo(progressEnd, endY)
+            path.lineTo(endX, centerY)
+            return path
+        }
+
+        drawPath(
+            path = wavePath(inset + trackWidth),
+            color = trackColor,
+            style = Stroke(width = trackHeight, cap = StrokeCap.Round),
+        )
+
+        if (buffered > 0f) {
             drawPath(
-                path = path,
+                path = wavePath(inset + trackWidth * buffered),
+                color = bufferedColor,
+                style = Stroke(width = trackHeight, cap = StrokeCap.Round),
+            )
+        }
+
+        if (shown > 0f) {
+            drawPath(
+                path = wavePath(inset + trackWidth * shown),
                 color = progressColor,
                 style = Stroke(width = progressHeight, cap = StrokeCap.Round),
             )
@@ -172,7 +170,7 @@ fun VideoSeekBar(
         drawCircle(
             color = progressColor,
             radius = thumbRadius,
-            center = Offset(progressEnd, endY),
+            center = Offset(inset + trackWidth * shown, centerY),
         )
     }
 }

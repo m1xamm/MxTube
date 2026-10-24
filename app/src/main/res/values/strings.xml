@@ -5,8 +5,8 @@
     <string name="search_clear">Очистить</string>
     <string name="search_empty_title">Ничего не нашлось</string>
     <string name="search_empty_message">Попробуй другой запрос или проверь раскладку.</string>
-    <string name="search_error_title">YouTube не отвечает</string>
-    <string name="search_error_message">Проверь интернет и попробуй ещё раз.</string>
+    <string name="search_error_title">Поиск не удался</string>
+    <string name="search_error_message">Измени запрос или попробуй ещё раз.</string>
     <string name="retry">Повторить</string>
     <string name="unknown_channel">Неизвестный канал</string>
     <string name="video_views_compact">%1$s просмотров</string>

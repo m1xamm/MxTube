@@ -2,7 +2,6 @@ package com.m1xamm.mxtube.ui.search
 
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -28,7 +27,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -65,7 +63,7 @@ fun VideoRow(
     val pressed by interactionSource.collectIsPressedAsState()
     val animatedTopCorner by
         animateDpAsState(
-            targetValue = if (pressed) maxOf(2.dp, topCorner - 6.dp) else topCorner,
+            targetValue = if (pressed) 28.dp else topCorner,
             animationSpec =
                 spring(
                     dampingRatio = Spring.DampingRatioMediumBouncy,
@@ -75,7 +73,7 @@ fun VideoRow(
         )
     val animatedBottomCorner by
         animateDpAsState(
-            targetValue = if (pressed) maxOf(2.dp, bottomCorner - 6.dp) else bottomCorner,
+            targetValue = if (pressed) 28.dp else bottomCorner,
             animationSpec =
                 spring(
                     dampingRatio = Spring.DampingRatioMediumBouncy,
@@ -83,27 +81,10 @@ fun VideoRow(
                 ),
             label = "video-cluster-bottom-corner",
         )
-    val scale by
-        animateFloatAsState(
-            targetValue = if (pressed) 0.985f else 1f,
-            animationSpec =
-                spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow,
-                ),
-            label = "video-cluster-scale",
-        )
-
     Surface(
         onClick = onClick,
         interactionSource = interactionSource,
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                },
+        modifier = modifier.fillMaxWidth(),
         shape =
             RoundedCornerShape(
                 topStart = animatedTopCorner,

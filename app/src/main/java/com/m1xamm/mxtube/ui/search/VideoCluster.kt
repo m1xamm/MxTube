@@ -8,8 +8,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.m1xamm.mxtube.data.youtube.VideoSummary
 
-const val VIDEO_CLUSTER_SIZE = 4
-
 @Composable
 fun VideoCluster(
     videos: List<VideoSummary>,

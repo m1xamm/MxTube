@@ -25,18 +25,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -101,12 +100,6 @@ fun SearchScreen(
             onSearch = { submitSearch(state.input) },
         )
 
-        HorizontalDivider(
-            modifier = Modifier.padding(horizontal = 16.dp),
-            thickness = 1.dp,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
-        )
-
         when (state.phase) {
             SearchPhase.Idle -> Spacer(Modifier.weight(1f))
 
@@ -118,8 +111,9 @@ fun SearchScreen(
                             .weight(1f),
                     contentAlignment = Alignment.Center,
                 ) {
-                    ContainedLoadingIndicator(
+                    LoadingIndicator(
                         modifier = Modifier.size(64.dp),
+                        color = MaterialTheme.colorScheme.primary,
                     )
                 }
 
@@ -316,16 +310,18 @@ private fun VideoList(
         state = listState,
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        items(
-            items = state.videos.chunked(VIDEO_CLUSTER_SIZE),
-            key = { it.first().url },
-        ) { group ->
-            VideoCluster(
-                videos = group,
-                onVideoClick = onVideoClick,
+        itemsIndexed(
+            items = state.videos,
+            key = { _, video -> video.url },
+        ) { index, video ->
+            VideoRow(
+                video = video,
+                onClick = { onVideoClick(video) },
                 modifier = Modifier.animateItem(),
+                topCorner = if (index == 0) 28.dp else 4.dp,
+                bottomCorner = if (index == state.videos.lastIndex) 28.dp else 4.dp,
             )
         }
 

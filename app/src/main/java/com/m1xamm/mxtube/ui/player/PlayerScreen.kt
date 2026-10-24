@@ -41,7 +41,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -103,10 +102,8 @@ import com.m1xamm.mxtube.data.youtube.PlaybackQuality
 import com.m1xamm.mxtube.data.youtube.VideoSummary
 import com.m1xamm.mxtube.ui.common.findActivity
 import com.m1xamm.mxtube.ui.common.formatRelativeDate
-import com.m1xamm.mxtube.ui.common.formatSpeed
 import com.m1xamm.mxtube.ui.common.formatTime
 import com.m1xamm.mxtube.ui.common.viewsText
-import com.m1xamm.mxtube.ui.search.VIDEO_CLUSTER_SIZE
 import com.m1xamm.mxtube.ui.search.VideoCluster
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
@@ -262,7 +259,7 @@ fun PlayerScreen(
         }
     }
 
-    DisposableEffect(activity) {
+    DisposableEffect(activity, darkTheme) {
         val controller =
             activity?.let {
                 WindowCompat.getInsetsController(it.window, it.window.decorView)
@@ -400,11 +397,8 @@ fun PlayerScreen(
                     PlayerDetails(
                         video = video,
                         info = info,
-                        speed = speed,
-                        selectedQualityIndex = state.selectedQualityIndex,
                         related = related,
                         onRelatedClick = onRelatedClick,
-                        onOpenSettings = onOpenSettings,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -617,12 +611,18 @@ private fun PlayerStage(
                         Modifier
                             .align(Alignment.Center)
                             .size(72.dp)
+                            .clip(playShape)
+                            .hazeBlur(
+                                input = HazeInput.Sources(hazeState),
+                                style = HazeMaterials.ultraThin(),
+                            )
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
                             .graphicsLayer {
                                 scaleX = playScale
                                 scaleY = playScale
                             },
                     shape = playShape,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = Color.Transparent,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -857,11 +857,8 @@ private fun PlayerIconButton(
 private fun PlayerDetails(
     video: VideoSummary,
     info: PlaybackInfo,
-    speed: Float,
-    selectedQualityIndex: Int,
     related: List<VideoSummary>,
     onRelatedClick: (VideoSummary) -> Unit,
-    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val views = if (info.viewCount >= 0) viewsText(info.viewCount) else ""
@@ -871,7 +868,6 @@ private fun PlayerDetails(
             views.takeIf { it.isNotBlank() },
             uploaded.takeIf { it.isNotBlank() },
         ).joinToString(" • ")
-    val qualityLabel = info.qualities.getOrNull(selectedQualityIndex)?.label ?: "—"
 
     LazyColumn(
         modifier =
@@ -907,25 +903,6 @@ private fun PlayerDetails(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-
-                Spacer(Modifier.height(18.dp))
-
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    PlayerActionTile(
-                        label = stringResource(R.string.player_quality),
-                        value = qualityLabel,
-                        iconRes = R.drawable.ic_high_quality_rounded,
-                        onClick = onOpenSettings,
-                        modifier = Modifier.weight(1f),
-                    )
-                    PlayerActionTile(
-                        label = stringResource(R.string.player_speed),
-                        value = formatSpeed(speed),
-                        iconRes = R.drawable.ic_speed_rounded,
-                        onClick = onOpenSettings,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
             }
         }
 
@@ -939,59 +916,12 @@ private fun PlayerDetails(
                 )
             }
 
-            items(
-                items = related.chunked(VIDEO_CLUSTER_SIZE),
-                key = { it.first().url },
-            ) { group ->
+            item(key = "related_cluster") {
                 VideoCluster(
-                    videos = group,
+                    videos = related,
                     onVideoClick = onRelatedClick,
-                    modifier = Modifier.animateItem(),
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun PlayerActionTile(
-    label: String,
-    value: String,
-    iconRes: Int,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        onClick = onClick,
-        modifier = modifier,
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-        tonalElevation = 1.dp,
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = label,
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                )
-                Icon(
-                    painter = painterResource(iconRes),
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                )
-            }
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = value,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
         }
     }
 }
