@@ -93,8 +93,8 @@ fun VideoSeekBar(
     val handleWidth = with(density) { 4.dp.toPx() }
     val handleGap = with(density) { 3.dp.toPx() }
     val trackThickness = with(density) { 4.dp.toPx() }
-    val wavelength = with(density) { 48.dp.toPx() }
-    val waveAmplitude = with(density) { 1.4.dp.toPx() } * waveLevel
+    val wavelength = with(density) { 32.dp.toPx() }
+    val waveAmplitude = with(density) { 1.9.dp.toPx() } * waveLevel
 
     val trackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.22f)
     val bufferColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.48f)
@@ -123,25 +123,30 @@ fun VideoSeekBar(
             if (end <= start) return@Canvas
 
             val centerY = size.height / 2f
-            drawLine(
-                color = trackColor,
-                start = Offset(start, centerY),
-                end = Offset(end, centerY),
-                strokeWidth = trackThickness,
-                cap = StrokeCap.Round,
-            )
-            if (bufferProgress > 0f) {
+            val thumbCenter = start + (end - start) * shown
+            val activeEnd = (thumbCenter - handleWidth / 2f - handleGap).coerceAtLeast(start)
+            val inactiveStart = (thumbCenter + handleWidth / 2f + handleGap).coerceAtMost(end)
+
+            if (inactiveStart < end) {
+                drawLine(
+                    color = trackColor,
+                    start = Offset(inactiveStart, centerY),
+                    end = Offset(end, centerY),
+                    strokeWidth = trackThickness,
+                    cap = StrokeCap.Round,
+                )
+            }
+            val bufferEnd = start + (end - start) * bufferProgress
+            if (bufferEnd > inactiveStart) {
                 drawLine(
                     color = bufferColor,
-                    start = Offset(start, centerY),
-                    end = Offset(start + (end - start) * bufferProgress, centerY),
+                    start = Offset(inactiveStart, centerY),
+                    end = Offset(bufferEnd, centerY),
                     strokeWidth = trackThickness,
                     cap = StrokeCap.Round,
                 )
             }
 
-            val thumbCenter = start + (end - start) * shown
-            val activeEnd = (thumbCenter - handleWidth / 2f - handleGap).coerceAtLeast(start)
             val activeLength = activeEnd - start
             if (activeLength <= 0f) return@Canvas
 
