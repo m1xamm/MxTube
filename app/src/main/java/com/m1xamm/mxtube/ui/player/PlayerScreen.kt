@@ -44,7 +44,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.lazy.LazyColumn
@@ -57,7 +56,6 @@ import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -329,16 +327,22 @@ fun PlayerScreen(
 
     when {
         state.error -> {
-            PlayerErrorScreen(
+            PlayerOpenErrorScreen(
+                video = video,
+                related = related,
                 onBack = handleBack,
+                onRelatedClick = onRelatedClick,
                 onRetry = viewModel::load,
                 modifier = modifier,
             )
         }
 
         state.isLoading || info == null -> {
-            PlayerSkeletonScreen(
+            PlayerLoadingScreen(
+                video = video,
+                related = related,
                 onBack = handleBack,
+                onRelatedClick = onRelatedClick,
                 modifier = modifier,
             )
         }
@@ -550,13 +554,20 @@ private fun PlayerStage(
         )
 
         if (isBuffering && !controlsVisible) {
-            LoadingIndicator(
+            Box(
                 modifier =
                     Modifier
                         .align(Alignment.Center)
-                        .size(48.dp),
-                color = Color.White,
-            )
+                        .size(60.dp)
+                        .clip(playShape)
+                        .background(Color.Black.copy(alpha = 0.32f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                LoadingIndicator(
+                    modifier = Modifier.size(28.dp),
+                    color = Color.White,
+                )
+            }
         }
 
         AnimatedVisibility(
@@ -958,62 +969,6 @@ private fun PlayerDetails(
                 VideoCluster(
                     videos = related,
                     onVideoClick = onRelatedClick,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun PlayerErrorScreen(
-    onBack: () -> Unit,
-    onRetry: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier =
-            modifier
-                .fillMaxSize()
-                .background(Color.Black),
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .align(Alignment.TopStart)
-                    .statusBarsPadding()
-                    .padding(6.dp)
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.14f))
-                    .clickable(onClick = onBack),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_arrow_back_rounded),
-                contentDescription = stringResource(R.string.player_back),
-                modifier = Modifier.size(20.dp),
-                tint = Color.White,
-            )
-        }
-
-        Column(
-            modifier =
-                Modifier
-                    .align(Alignment.Center)
-                    .padding(32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = stringResource(R.string.player_error_title),
-                style = MaterialTheme.typography.titleMedium,
-                color = Color.White,
-                textAlign = TextAlign.Center,
-            )
-            Spacer(Modifier.height(12.dp))
-            TextButton(onClick = onRetry) {
-                Text(
-                    text = stringResource(R.string.retry),
-                    color = Color.White,
                 )
             }
         }

@@ -50,8 +50,14 @@ fun VideoRow(
     topCorner: Dp = 28.dp,
     bottomCorner: Dp = 28.dp,
 ) {
-    val placeholder = ColorPainter(MaterialTheme.colorScheme.surfaceContainerHigh)
     val darkTheme = MaterialTheme.colorScheme.surfaceContainerHighest.luminance() < 0.5f
+    val placeholderColor =
+        if (darkTheme) {
+            MaterialTheme.colorScheme.surfaceContainerHighest
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        }
+    val placeholder = ColorPainter(placeholderColor)
     val cardColor =
         if (darkTheme) {
             MaterialTheme.colorScheme.surfaceContainerHigh
@@ -122,7 +128,7 @@ fun VideoRow(
                         .width(140.dp)
                         .aspectRatio(16f / 9f)
                         .clip(RoundedCornerShape(18.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                        .background(placeholderColor),
             ) {
                 AsyncImage(
                     model = video.thumbnailUrl,
