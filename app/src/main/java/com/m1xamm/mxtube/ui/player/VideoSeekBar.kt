@@ -93,7 +93,7 @@ fun VideoSeekBar(
     val handleWidth = with(density) { 4.dp.toPx() }
     val handleGap = with(density) { 3.dp.toPx() }
     val trackThickness = with(density) { 4.dp.toPx() }
-    val wavelength = with(density) { 32.dp.toPx() }
+    val wavelength = with(density) { 24.dp.toPx() }
     val waveAmplitude = with(density) { 1.9.dp.toPx() } * waveLevel
 
     val trackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.22f)
