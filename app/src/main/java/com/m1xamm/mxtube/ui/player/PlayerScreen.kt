@@ -616,14 +616,14 @@ private fun PlayerStage(
                                 input = HazeInput.Sources(hazeState),
                                 style = HazeMaterials.ultraThin(),
                             )
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+                            .background(Color.Black.copy(alpha = 0.32f))
                             .graphicsLayer {
                                 scaleX = playScale
                                 scaleY = playScale
                             },
                     shape = playShape,
                     color = Color.Transparent,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    contentColor = Color.White,
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         AnimatedContent(
@@ -638,7 +638,7 @@ private fun PlayerStage(
                                 PlayButtonState.Buffering ->
                                     LoadingIndicator(
                                         modifier = Modifier.size(32.dp),
-                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        color = Color.White,
                                     )
 
                                 PlayButtonState.Playing ->
@@ -646,7 +646,7 @@ private fun PlayerStage(
                                         painter = painterResource(R.drawable.ic_pause_rounded),
                                         contentDescription = stringResource(R.string.player_pause),
                                         modifier = Modifier.size(34.dp),
-                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                        tint = Color.White,
                                     )
 
                                 PlayButtonState.Paused ->
@@ -654,7 +654,7 @@ private fun PlayerStage(
                                         painter = painterResource(R.drawable.ic_play_arrow_rounded),
                                         contentDescription = stringResource(R.string.player_play),
                                         modifier = Modifier.size(40.dp),
-                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                        tint = Color.White,
                                     )
                             }
                         }
