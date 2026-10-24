@@ -1,5 +1,3 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
-
 package com.m1xamm.mxtube.ui.player
 
 import androidx.compose.animation.core.Spring
@@ -16,10 +14,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -31,14 +27,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import kotlin.math.PI
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 @Composable
 fun VideoSeekBar(
@@ -69,28 +71,44 @@ fun VideoSeekBar(
         }
     val shown = if (dragging) dragFraction else progress
 
-    val thumbSize by
+    val handleHeight by
         animateDpAsState(
-            targetValue = if (dragging) 16.dp else 12.dp,
+            targetValue = if (dragging) 24.dp else 18.dp,
             animationSpec =
                 spring(
                     dampingRatio = Spring.DampingRatioNoBouncy,
                     stiffness = Spring.StiffnessMedium,
                 ),
-            label = "seek-thumb-size",
+            label = "seek-handle-height",
         )
-    val waveAmount by
+    val waveLevel by
         animateFloatAsState(
-            targetValue = if (isPlaying && !dragging) 0.5f else 0f,
+            targetValue = if (isPlaying && !dragging) 1f else 0f,
             animationSpec = tween(220),
-            label = "seek-wave",
+            label = "seek-wave-level",
         )
 
-    val trackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.24f)
-    val bufferColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.48f)
-    val activeColor = MaterialTheme.colorScheme.primary
     val density = LocalDensity.current
-    val thumbRadius = with(density) { 6.dp.toPx() }
+    val inset = with(density) { 6.dp.toPx() }
+    val handleWidth = with(density) { 4.dp.toPx() }
+    val handleGap = with(density) { 3.dp.toPx() }
+    val trackThickness = with(density) { 4.dp.toPx() }
+    val wavelength = with(density) { 48.dp.toPx() }
+    val waveAmplitude = with(density) { 1.4.dp.toPx() } * waveLevel
+
+    val trackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.22f)
+    val bufferColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.48f)
+    val darkTheme = MaterialTheme.colorScheme.surfaceContainerHighest.luminance() < 0.5f
+    val activeColor =
+        if (darkTheme) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            lerp(
+                MaterialTheme.colorScheme.primary,
+                MaterialTheme.colorScheme.onSurface,
+                0.18f,
+            )
+        }
 
     Box(
         modifier =
@@ -100,17 +118,16 @@ fun VideoSeekBar(
                 .onSizeChanged { widthPx = it.width },
     ) {
         Canvas(Modifier.fillMaxSize()) {
-            val start = thumbRadius
-            val end = size.width - thumbRadius
+            val start = inset
+            val end = size.width - inset
             if (end <= start) return@Canvas
 
             val centerY = size.height / 2f
-            val stroke = 4.dp.toPx()
             drawLine(
                 color = trackColor,
                 start = Offset(start, centerY),
                 end = Offset(end, centerY),
-                strokeWidth = stroke,
+                strokeWidth = trackThickness,
                 cap = StrokeCap.Round,
             )
             if (bufferProgress > 0f) {
@@ -118,43 +135,67 @@ fun VideoSeekBar(
                     color = bufferColor,
                     start = Offset(start, centerY),
                     end = Offset(start + (end - start) * bufferProgress, centerY),
-                    strokeWidth = stroke,
+                    strokeWidth = trackThickness,
                     cap = StrokeCap.Round,
+                )
+            }
+
+            val thumbCenter = start + (end - start) * shown
+            val activeEnd = (thumbCenter - handleWidth / 2f - handleGap).coerceAtLeast(start)
+            val activeLength = activeEnd - start
+            if (activeLength <= 0f) return@Canvas
+
+            val envelope = ((activeLength - 10.dp.toPx()) / 24.dp.toPx()).coerceIn(0f, 1f)
+            val amplitude = waveAmplitude * envelope
+            if (amplitude < 0.05f) {
+                drawLine(
+                    color = activeColor,
+                    start = Offset(start, centerY),
+                    end = Offset(activeEnd, centerY),
+                    strokeWidth = trackThickness,
+                    cap = StrokeCap.Round,
+                )
+            } else {
+                val path = Path()
+                path.moveTo(start, centerY)
+                val step = 0.75.dp.toPx()
+                var x = start
+                while (x < activeEnd) {
+                    val phase = ((x - start) / wavelength) * 2f * PI.toFloat()
+                    path.lineTo(x, centerY + sin(phase) * amplitude)
+                    x += step
+                }
+                val lastPhase = ((activeEnd - start) / wavelength) * 2f * PI.toFloat()
+                path.lineTo(activeEnd, centerY + sin(lastPhase) * amplitude)
+                drawPath(
+                    path = path,
+                    color = activeColor,
+                    style =
+                        Stroke(
+                            width = trackThickness,
+                            cap = StrokeCap.Round,
+                            join = StrokeJoin.Round,
+                        ),
                 )
             }
         }
 
-        LinearWavyProgressIndicator(
-            progress = { shown },
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 6.dp),
-            color = activeColor,
-            trackColor = Color.Transparent,
-            gapSize = 0.dp,
-            stopSize = 0.dp,
-            amplitude = { waveAmount },
-            wavelength = 40.dp,
-            waveSpeed = 0.dp,
-        )
-
         if (widthPx > 0) {
-            val usable = (widthPx - 2 * thumbRadius).coerceAtLeast(0f)
-            val thumbPx = with(density) { thumbSize.toPx() }
-            val thumbCenter = thumbRadius + usable * shown
+            val start = inset
+            val end = widthPx - inset
+            val thumbCenter = start + (end - start) * shown
             Box(
                 modifier =
                     Modifier
                         .align(Alignment.CenterStart)
                         .offset {
                             IntOffset(
-                                x = (thumbCenter - thumbPx / 2f).roundToInt(),
+                                x = (thumbCenter - handleWidth / 2f).roundToInt(),
                                 y = 0,
                             )
                         }
-                        .size(thumbSize)
-                        .background(activeColor, CircleShape),
+                        .size(width = 4.dp, height = handleHeight)
+                        .background(activeColor, RoundedCornerShape(2.dp)),
             )
         }
 
@@ -162,12 +203,12 @@ fun VideoSeekBar(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .pointerInput(durationMs, thumbRadius) {
+                    .pointerInput(durationMs, inset) {
                         if (durationMs <= 0) return@pointerInput
 
                         fun fractionAt(x: Float): Float {
-                            val usable = (size.width - 2 * thumbRadius).coerceAtLeast(1f)
-                            return ((x - thumbRadius) / usable).coerceIn(0f, 1f)
+                            val usable = (size.width - 2f * inset).coerceAtLeast(1f)
+                            return ((x - inset) / usable).coerceIn(0f, 1f)
                         }
 
                         awaitEachGesture {

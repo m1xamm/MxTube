@@ -370,18 +370,16 @@ private fun SearchSkeleton(modifier: Modifier = Modifier) {
             label = "search-skeleton-alpha",
         )
 
-    Column(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .padding(start = 16.dp, end = 16.dp, top = 10.dp),
+    LazyColumn(
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        repeat(5) { index ->
+        itemsIndexed(List(12) { it }) { index, _ ->
             VideoRowSkeleton(
                 alpha = alpha,
                 topCorner = if (index == 0) 28.dp else 4.dp,
-                bottomCorner = if (index == 4) 28.dp else 4.dp,
+                bottomCorner = if (index == 11) 28.dp else 4.dp,
             )
         }
     }
