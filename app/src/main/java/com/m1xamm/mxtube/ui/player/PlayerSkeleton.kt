@@ -74,14 +74,14 @@ fun PlayerSkeletonScreen(
                         .padding(8.dp)
                         .size(44.dp),
                 shape = CircleShape,
-                color = Color(0xFF1B1B1F),
-                contentColor = Color.White,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurface,
             ) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = stringResource(R.string.player_back),
-                        tint = Color.White,
+                        tint = MaterialTheme.colorScheme.onSurface,
                     )
                 }
             }

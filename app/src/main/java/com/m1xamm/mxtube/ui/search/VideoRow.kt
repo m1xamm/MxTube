@@ -1,7 +1,12 @@
 package com.m1xamm.mxtube.ui.search
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,16 +19,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -39,7 +47,7 @@ fun VideoRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val placeholder = ColorPainter(MaterialTheme.colorScheme.surfaceContainerHigh)
+    val placeholder = ColorPainter(MaterialTheme.colorScheme.surfaceContainerHighest)
     val duration = formatDuration(video.durationSeconds)
     val channel = video.uploader.ifBlank { stringResource(R.string.unknown_channel) }
     val views = if (video.viewCount >= 0) compactCount(video.viewCount) else ""
@@ -50,82 +58,114 @@ fun VideoRow(
             uploaded.takeIf { it.isNotBlank() },
         ).joinToString(" • ")
 
-    Row(
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val cornerRadius by
+        animateDpAsState(
+            targetValue = if (pressed) 20.dp else 28.dp,
+            animationSpec =
+                spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            label = "video-cluster-corner",
+        )
+    val scale by
+        animateFloatAsState(
+            targetValue = if (pressed) 0.985f else 1f,
+            animationSpec =
+                spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            label = "video-cluster-scale",
+        )
+
+    Surface(
+        onClick = onClick,
+        interactionSource = interactionSource,
         modifier =
             modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .clickable(onClick = onClick)
-                .padding(vertical = 10.dp),
-        verticalAlignment = Alignment.Top,
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                },
+        shape = RoundedCornerShape(cornerRadius),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        tonalElevation = 1.dp,
     ) {
-        Box(
+        Row(
             modifier =
                 Modifier
-                    .width(140.dp)
-                    .aspectRatio(16f / 9f)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                    .fillMaxWidth()
+                    .padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            AsyncImage(
-                model = video.thumbnailUrl,
-                contentDescription = video.title,
-                contentScale = ContentScale.Crop,
-                placeholder = placeholder,
-                error = placeholder,
-                modifier = Modifier.fillMaxSize(),
-            )
-
-            if (duration.isNotBlank()) {
-                Text(
-                    text = duration,
-                    modifier =
-                        Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(6.dp)
-                            .background(Color.Black.copy(alpha = 0.76f), RoundedCornerShape(6.dp))
-                            .padding(horizontal = 5.dp, vertical = 2.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White,
+            Box(
+                modifier =
+                    Modifier
+                        .width(140.dp)
+                        .aspectRatio(16f / 9f)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+            ) {
+                AsyncImage(
+                    model = video.thumbnailUrl,
+                    contentDescription = video.title,
+                    contentScale = ContentScale.Crop,
+                    placeholder = placeholder,
+                    error = placeholder,
+                    modifier = Modifier.fillMaxSize(),
                 )
+
+                if (duration.isNotBlank()) {
+                    Text(
+                        text = duration,
+                        modifier =
+                            Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(6.dp)
+                                .background(Color.Black.copy(alpha = 0.76f), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 5.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                    )
+                }
             }
-        }
 
-        Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(12.dp))
 
-        Column(
-            modifier =
-                Modifier
-                    .weight(1f)
-                    .padding(top = 2.dp),
-        ) {
-            Text(
-                text = video.title,
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-
-            Spacer(Modifier.height(6.dp))
-
-            Text(
-                text = channel,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-
-            if (meta.isNotBlank()) {
-                Spacer(Modifier.height(2.dp))
+            Column(Modifier.weight(1f)) {
                 Text(
-                    text = meta,
+                    text = video.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+
+                Spacer(Modifier.height(6.dp))
+
+                Text(
+                    text = channel,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+
+                if (meta.isNotBlank()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = meta,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }

@@ -1,6 +1,13 @@
 package com.m1xamm.mxtube.ui.search
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,12 +33,13 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -192,55 +200,96 @@ private fun SearchHeader(
 
         Spacer(Modifier.width(10.dp))
 
-        TextField(
-            value = input,
-            onValueChange = onInputChange,
+        val interactionSource = remember { MutableInteractionSource() }
+        val focused by interactionSource.collectIsFocusedAsState()
+        val clusterCorner by
+            animateDpAsState(
+                targetValue = if (focused) 20.dp else 28.dp,
+                animationSpec =
+                    spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                label = "search-cluster-corner",
+            )
+        val clusterColor by
+            animateColorAsState(
+                targetValue =
+                    if (focused) {
+                        MaterialTheme.colorScheme.surfaceContainerHighest
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerHigh
+                    },
+                animationSpec = tween(160),
+                label = "search-cluster-color",
+            )
+
+        Surface(
             modifier =
                 Modifier
                     .weight(1f)
-                    .height(54.dp),
-            placeholder = {
-                Text(stringResource(R.string.search_hint))
-            },
-            trailingIcon = {
-                if (input.isNotEmpty()) {
-                    IconButton(onClick = onClear) {
-                        Icon(
-                            imageVector = Icons.Filled.Close,
-                            contentDescription = stringResource(R.string.search_clear),
-                        )
-                    }
-                }
-            },
-            singleLine = true,
-            shape = RoundedCornerShape(27.dp),
-            textStyle = MaterialTheme.typography.bodyLarge,
-            colors =
-                TextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent,
-                    cursorColor = MaterialTheme.colorScheme.primary,
-                ),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { onSearch() }),
-        )
-
-        Spacer(Modifier.width(8.dp))
-
-        FilledTonalIconButton(
-            onClick = onSearch,
-            enabled = input.isNotBlank() && !isLoading,
-            shape = CircleShape,
-            modifier = Modifier.size(48.dp),
+                    .height(56.dp),
+            shape = RoundedCornerShape(clusterCorner),
+            color = clusterColor,
         ) {
-            Icon(
-                imageVector = Icons.Filled.Search,
-                contentDescription = stringResource(R.string.search_action),
-                modifier = Modifier.size(22.dp),
-            )
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextField(
+                    value = input,
+                    onValueChange = onInputChange,
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .height(56.dp),
+                    placeholder = {
+                        Text(stringResource(R.string.search_hint))
+                    },
+                    trailingIcon = {
+                        if (input.isNotEmpty()) {
+                            IconButton(onClick = onClear) {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = stringResource(R.string.search_clear),
+                                )
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    shape = CircleShape,
+                    textStyle = MaterialTheme.typography.bodyLarge,
+                    interactionSource = interactionSource,
+                    colors =
+                        TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            disabledContainerColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            disabledIndicatorColor = Color.Transparent,
+                            cursorColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { onSearch() }),
+                )
+
+                FilledIconButton(
+                    onClick = onSearch,
+                    enabled = input.isNotBlank() && !isLoading,
+                    shape = CircleShape,
+                    modifier = Modifier.size(48.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Search,
+                        contentDescription = stringResource(R.string.search_action),
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+            }
         }
     }
 }
@@ -256,8 +305,8 @@ private fun VideoList(
     LazyColumn(
         state = listState,
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(
             items = state.videos,

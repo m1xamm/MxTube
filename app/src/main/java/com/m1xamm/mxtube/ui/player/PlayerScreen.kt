@@ -8,15 +8,22 @@ import android.view.LayoutInflater
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -31,10 +38,10 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsTopHeight
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlayArrow
@@ -63,6 +70,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -97,16 +105,24 @@ import com.m1xamm.mxtube.data.youtube.PlaybackQuality
 import com.m1xamm.mxtube.data.youtube.VideoSummary
 import com.m1xamm.mxtube.ui.common.findActivity
 import com.m1xamm.mxtube.ui.common.formatRelativeDate
+import com.m1xamm.mxtube.ui.common.formatSpeed
 import com.m1xamm.mxtube.ui.common.formatTime
 import com.m1xamm.mxtube.ui.common.viewsText
+import com.m1xamm.mxtube.ui.search.VideoRow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
-private val PlayerChrome = Color(0xFF1B1B1F)
+private enum class PlayButtonState {
+    Buffering,
+    Playing,
+    Paused,
+}
 
 @Composable
 fun PlayerScreen(
     video: VideoSummary,
+    related: List<VideoSummary>,
+    onRelatedClick: (VideoSummary) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: PlayerViewModel = viewModel(key = video.url) { PlayerViewModel(video.url) },
@@ -247,7 +263,7 @@ fun PlayerScreen(
                 WindowCompat.getInsetsController(it.window, it.window.decorView)
             }
         controller?.isAppearanceLightStatusBars = false
-        controller?.isAppearanceLightNavigationBars = false
+        controller?.isAppearanceLightNavigationBars = !darkTheme
 
         onDispose {
             controller?.isAppearanceLightStatusBars = !darkTheme
@@ -377,6 +393,11 @@ fun PlayerScreen(
                     PlayerDetails(
                         video = video,
                         info = info,
+                        speed = speed,
+                        selectedQualityIndex = state.selectedQualityIndex,
+                        related = related,
+                        onRelatedClick = onRelatedClick,
+                        onOpenSettings = onOpenSettings,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -429,6 +450,26 @@ private fun PlayerStage(
     var scrubPositionMs by remember { mutableLongStateOf(positionMs) }
     val playShape = MaterialShapes.Cookie9Sided.toShape()
     val feedbackShape = MaterialShapes.Cookie9Sided.toShape()
+    val playInteractionSource = remember { MutableInteractionSource() }
+    val playPressed by playInteractionSource.collectIsPressedAsState()
+    val playScale by
+        animateFloatAsState(
+            targetValue = if (playPressed) 0.93f else 1f,
+            animationSpec =
+                spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            label = "play-scale",
+        )
+    val chromeColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    val chromeContent = MaterialTheme.colorScheme.onSurface
+    val playButtonState =
+        when {
+            isBuffering -> PlayButtonState.Buffering
+            isPlaying -> PlayButtonState.Playing
+            else -> PlayButtonState.Paused
+        }
 
     LaunchedEffect(feedbackToken) {
         if (feedbackToken > 0) {
@@ -497,7 +538,7 @@ private fun PlayerStage(
                     .background(Color.Black.copy(alpha = 0.4f)),
         )
 
-        if (isBuffering) {
+        if (isBuffering && !controlsVisible) {
             LoadingIndicator(
                 modifier =
                     Modifier
@@ -539,14 +580,14 @@ private fun PlayerStage(
                                     .weight(1f)
                                     .padding(horizontal = 12.dp),
                             shape = RoundedCornerShape(50),
-                            color = PlayerChrome,
-                            contentColor = Color.White,
+                            color = chromeColor,
+                            contentColor = chromeContent,
                         ) {
                             Text(
                                 text = title,
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                                 style = MaterialTheme.typography.titleSmall,
-                                color = Color.White,
+                                color = chromeContent,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -562,57 +603,79 @@ private fun PlayerStage(
                     )
                 }
 
-                Row(
+                Surface(
                     modifier = Modifier.align(Alignment.Center),
-                    verticalAlignment = Alignment.CenterVertically,
+                    shape = RoundedCornerShape(36.dp),
+                    color = chromeColor,
+                    contentColor = chromeContent,
                 ) {
-                    SeekStepButton(
-                        text = "−10",
-                        onClick = { seekBy(-10_000L, false) },
-                    )
-
-                    Spacer(Modifier.width(18.dp))
-
-                    Surface(
-                        onClick = onPlayPause,
-                        modifier = Modifier.size(64.dp),
-                        shape = playShape,
-                        color = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    Row(
+                        modifier = Modifier.padding(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            AnimatedContent(
-                                targetState = isPlaying,
-                                transitionSpec = {
-                                    fadeIn(tween(120)) togetherWith fadeOut(tween(90))
-                                },
-                                label = "playPause",
-                            ) { playing ->
-                                if (playing) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.ic_pause),
-                                        contentDescription = stringResource(R.string.player_pause),
-                                        modifier = Modifier.size(30.dp),
-                                        tint = MaterialTheme.colorScheme.onPrimary,
-                                    )
-                                } else {
-                                    Icon(
-                                        imageVector = Icons.Filled.PlayArrow,
-                                        contentDescription = stringResource(R.string.player_play),
-                                        modifier = Modifier.size(36.dp),
-                                        tint = MaterialTheme.colorScheme.onPrimary,
-                                    )
+                        SeekStepButton(
+                            text = "−10",
+                            onClick = { seekBy(-10_000L, false) },
+                        )
+
+                        Spacer(Modifier.width(6.dp))
+
+                        Surface(
+                            onClick = onPlayPause,
+                            interactionSource = playInteractionSource,
+                            modifier =
+                                Modifier
+                                    .size(60.dp)
+                                    .graphicsLayer {
+                                        scaleX = playScale
+                                        scaleY = playScale
+                                    },
+                            shape = playShape,
+                            color = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                        ) {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                AnimatedContent(
+                                    targetState = playButtonState,
+                                    transitionSpec = {
+                                        fadeIn(tween(120)) togetherWith fadeOut(tween(90))
+                                    },
+                                    label = "playPause",
+                                ) { state ->
+                                    when (state) {
+                                        PlayButtonState.Buffering ->
+                                            LoadingIndicator(
+                                                modifier = Modifier.size(28.dp),
+                                                color = MaterialTheme.colorScheme.onPrimary,
+                                            )
+
+                                        PlayButtonState.Playing ->
+                                            Icon(
+                                                painter = painterResource(R.drawable.ic_pause),
+                                                contentDescription = stringResource(R.string.player_pause),
+                                                modifier = Modifier.size(30.dp),
+                                                tint = MaterialTheme.colorScheme.onPrimary,
+                                            )
+
+                                        PlayButtonState.Paused ->
+                                            Icon(
+                                                imageVector = Icons.Filled.PlayArrow,
+                                                contentDescription = stringResource(R.string.player_play),
+                                                modifier = Modifier.size(36.dp),
+                                                tint = MaterialTheme.colorScheme.onPrimary,
+                                            )
+                                    }
                                 }
                             }
                         }
+
+                        Spacer(Modifier.width(6.dp))
+
+                        SeekStepButton(
+                            text = "+10",
+                            onClick = { seekBy(10_000L, false) },
+                        )
                     }
-
-                    Spacer(Modifier.width(18.dp))
-
-                    SeekStepButton(
-                        text = "+10",
-                        onClick = { seekBy(10_000L, false) },
-                    )
                 }
 
                 Box(
@@ -626,8 +689,8 @@ private fun PlayerStage(
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(30.dp),
-                        color = PlayerChrome,
-                        contentColor = Color.White,
+                        color = chromeColor,
+                        contentColor = chromeContent,
                     ) {
                         Row(
                             modifier =
@@ -640,7 +703,7 @@ private fun PlayerStage(
                                 text = formatTime((if (isDragging) scrubPositionMs else positionMs) / 1000),
                                 modifier = Modifier.width(56.dp),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color.White,
+                                color = chromeContent,
                                 maxLines = 1,
                                 softWrap = false,
                             )
@@ -659,7 +722,7 @@ private fun PlayerStage(
                                 text = formatTime(durationMs / 1000),
                                 modifier = Modifier.width(56.dp),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color.White,
+                                color = chromeContent,
                                 textAlign = TextAlign.Center,
                                 maxLines = 1,
                                 softWrap = false,
@@ -678,7 +741,7 @@ private fun PlayerStage(
                                         stringResource(
                                             if (isFullscreen) R.string.player_exit_fullscreen else R.string.player_fullscreen,
                                         ),
-                                    tint = Color.White,
+                                    tint = chromeContent,
                                 )
                             }
                         }
@@ -765,14 +828,14 @@ private fun PlayerIconButton(
         onClick = onClick,
         modifier = Modifier.size(44.dp),
         shape = CircleShape,
-        color = PlayerChrome,
-        contentColor = Color.White,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Icon(
                 imageVector = icon,
                 contentDescription = contentDescription,
-                tint = Color.White,
+                tint = MaterialTheme.colorScheme.onSurface,
             )
         }
     }
@@ -785,16 +848,16 @@ private fun SeekStepButton(
 ) {
     Surface(
         onClick = onClick,
-        modifier = Modifier.size(54.dp),
+        modifier = Modifier.size(48.dp),
         shape = CircleShape,
-        color = PlayerChrome,
-        contentColor = Color.White,
+        color = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
                 text = text,
-                style = MaterialTheme.typography.labelMedium,
-                color = Color.White,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface,
             )
         }
     }
@@ -804,6 +867,11 @@ private fun SeekStepButton(
 private fun PlayerDetails(
     video: VideoSummary,
     info: PlaybackInfo,
+    speed: Float,
+    selectedQualityIndex: Int,
+    related: List<VideoSummary>,
+    onRelatedClick: (VideoSummary) -> Unit,
+    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val views = if (info.viewCount >= 0) viewsText(info.viewCount) else ""
@@ -813,37 +881,114 @@ private fun PlayerDetails(
             views.takeIf { it.isNotBlank() },
             uploaded.takeIf { it.isNotBlank() },
         ).joinToString(" • ")
+    val qualityLabel = info.qualities.getOrNull(selectedQualityIndex)?.label ?: "—"
 
-    Column(
+    LazyColumn(
         modifier =
             modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .navigationBarsPadding()
-                .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
+                .navigationBarsPadding(),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(
-            text = info.title.ifBlank { video.title },
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis,
-        )
+        item(key = "player_details") {
+            Column {
+                Text(
+                    text = info.title.ifBlank { video.title },
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
 
-        Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(10.dp))
 
-        Text(
-            text = info.uploader.ifBlank { stringResource(R.string.unknown_channel) },
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
+                Text(
+                    text = info.uploader.ifBlank { stringResource(R.string.unknown_channel) },
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
 
-        if (meta.isNotBlank()) {
-            Spacer(Modifier.height(3.dp))
+                if (meta.isNotBlank()) {
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        text = meta,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                Spacer(Modifier.height(18.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    PlayerActionTile(
+                        label = stringResource(R.string.player_quality),
+                        value = qualityLabel,
+                        onClick = onOpenSettings,
+                        modifier = Modifier.weight(1f),
+                    )
+                    PlayerActionTile(
+                        label = stringResource(R.string.player_speed),
+                        value = formatSpeed(speed),
+                        onClick = onOpenSettings,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+
+        if (related.isNotEmpty()) {
+            item(key = "related_header") {
+                Text(
+                    text = stringResource(R.string.more_from_search),
+                    modifier = Modifier.padding(top = 6.dp),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+
+            items(
+                items = related,
+                key = { it.url },
+            ) { item ->
+                VideoRow(
+                    video = item,
+                    onClick = { onRelatedClick(item) },
+                    modifier = Modifier.animateItem(),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlayerActionTile(
+    label: String,
+    value: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        tonalElevation = 1.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+        ) {
             Text(
-                text = meta,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
         }
     }

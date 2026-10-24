@@ -5,6 +5,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -13,7 +14,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
@@ -44,6 +44,9 @@ fun VideoSeekBar(
             0f
         }
     val shown = if (dragging) dragFraction else progress
+    val trackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f)
+    val bufferedColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+    val progressColor = MaterialTheme.colorScheme.primary
 
     Canvas(
         modifier =
@@ -88,7 +91,7 @@ fun VideoSeekBar(
         val thumbRadius = 5.dp.toPx()
 
         drawLine(
-            color = Color.White.copy(alpha = 0.25f),
+            color = trackColor,
             start = Offset(inset, centerY),
             end = Offset(inset + trackWidth, centerY),
             strokeWidth = trackHeight,
@@ -97,7 +100,7 @@ fun VideoSeekBar(
 
         if (buffered > 0f) {
             drawLine(
-                color = Color.White.copy(alpha = 0.45f),
+                color = bufferedColor,
                 start = Offset(inset, centerY),
                 end = Offset(inset + trackWidth * buffered, centerY),
                 strokeWidth = trackHeight,
@@ -106,7 +109,7 @@ fun VideoSeekBar(
         }
 
         drawLine(
-            color = Color.White,
+            color = progressColor,
             start = Offset(inset, centerY),
             end = Offset(inset + trackWidth * shown, centerY),
             strokeWidth = trackHeight,
@@ -114,7 +117,7 @@ fun VideoSeekBar(
         )
 
         drawCircle(
-            color = Color.White,
+            color = progressColor,
             radius = thumbRadius,
             center = Offset(inset + trackWidth * shown, centerY),
         )

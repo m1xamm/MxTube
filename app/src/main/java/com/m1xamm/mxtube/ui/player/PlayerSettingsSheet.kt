@@ -16,11 +16,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonDefaults
@@ -64,7 +64,7 @@ fun PlayerSettingsSheet(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(start = 24.dp, end = 24.dp, bottom = 20.dp),
+                    .padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -85,60 +85,72 @@ fun PlayerSettingsSheet(
                 }
             }
 
-            SectionLabel(stringResource(R.string.player_quality))
+            Spacer(Modifier.height(4.dp))
 
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                info.qualities.forEachIndexed { index, quality ->
-                    ToggleButton(
-                        checked = index == selectedQualityIndex,
-                        onCheckedChange = { checked ->
-                            if (checked) onQualitySelected(index)
-                        },
-                        colors = toggleColors,
-                    ) {
-                        Text(quality.label)
+            OptionCluster(stringResource(R.string.player_quality)) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    info.qualities.forEachIndexed { index, quality ->
+                        ToggleButton(
+                            checked = index == selectedQualityIndex,
+                            onCheckedChange = { checked ->
+                                if (checked) onQualitySelected(index)
+                            },
+                            colors = toggleColors,
+                        ) {
+                            Text(quality.label)
+                        }
                     }
                 }
             }
 
-            HorizontalDivider(
-                modifier = Modifier.padding(top = 20.dp),
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
-            )
+            Spacer(Modifier.height(12.dp))
 
-            SectionLabel(stringResource(R.string.player_speed))
-
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f).forEach { value ->
-                    ToggleButton(
-                        checked = value == speed,
-                        onCheckedChange = { checked ->
-                            if (checked) onSpeedSelected(value)
-                        },
-                        colors = toggleColors,
-                    ) {
-                        Text(formatSpeed(value))
+            OptionCluster(stringResource(R.string.player_speed)) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f).forEach { value ->
+                        ToggleButton(
+                            checked = value == speed,
+                            onCheckedChange = { checked ->
+                                if (checked) onSpeedSelected(value)
+                            },
+                            colors = toggleColors,
+                        ) {
+                            Text(formatSpeed(value))
+                        }
                     }
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(4.dp))
         }
     }
 }
 
 @Composable
-private fun SectionLabel(text: String) {
-    Text(
-        text = text,
-        modifier = Modifier.padding(top = 16.dp, bottom = 10.dp),
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+private fun OptionCluster(
+    label: String,
+    content: @Composable () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Text(
+                text = label,
+                modifier = Modifier.padding(start = 4.dp, bottom = 10.dp),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            content()
+        }
+    }
 }
