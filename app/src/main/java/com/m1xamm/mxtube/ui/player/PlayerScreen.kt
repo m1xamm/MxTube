@@ -567,7 +567,7 @@ private fun PlayerStage(
                         Modifier
                             .fillMaxWidth()
                             .align(Alignment.TopStart)
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                            .padding(horizontal = 12.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     PlayerIconButton(
@@ -676,7 +676,7 @@ private fun PlayerStage(
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
                             .then(if (isFullscreen) Modifier.navigationBarsPadding() else Modifier)
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                            .padding(horizontal = 12.dp, vertical = 12.dp),
                 ) {
                     Surface(
                         modifier =
@@ -695,7 +695,7 @@ private fun PlayerStage(
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                    .padding(horizontal = 8.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
