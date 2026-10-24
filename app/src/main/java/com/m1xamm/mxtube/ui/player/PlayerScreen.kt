@@ -52,7 +52,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
@@ -151,6 +150,7 @@ fun PlayerScreen(
     var isBuffering by remember { mutableStateOf(false) }
     var durationMs by remember { mutableLongStateOf(0L) }
     var positionMs by remember { mutableLongStateOf(0L) }
+    var bufferedMs by remember { mutableLongStateOf(0L) }
     var isDragging by remember { mutableStateOf(false) }
     var speed by rememberSaveable { mutableFloatStateOf(1f) }
     var settingsOpen by remember { mutableStateOf(false) }
@@ -187,6 +187,7 @@ fun PlayerScreen(
         isPlaying = exoPlayer.isPlaying
         isBuffering = exoPlayer.playbackState == Player.STATE_BUFFERING
         durationMs = exoPlayer.duration.coerceAtLeast(0)
+        bufferedMs = exoPlayer.bufferedPosition
     }
 
     DisposableEffect(exoPlayer) {
@@ -200,6 +201,7 @@ fun PlayerScreen(
                     isBuffering = playbackState == Player.STATE_BUFFERING
                     if (playbackState == Player.STATE_READY) {
                         durationMs = exoPlayer.duration.coerceAtLeast(0)
+                        bufferedMs = exoPlayer.bufferedPosition
                         playbackError = false
                     }
                     if (playbackState == Player.STATE_ENDED) {
@@ -245,6 +247,7 @@ fun PlayerScreen(
             if (!isDragging) {
                 positionMs = exoPlayer.currentPosition
             }
+            bufferedMs = exoPlayer.bufferedPosition
             delay(500)
         }
     }
@@ -361,6 +364,7 @@ fun PlayerScreen(
                     },
                     positionMs = positionMs,
                     durationMs = durationMs,
+                    bufferedMs = bufferedMs,
                     isDragging = isDragging,
                     onSeek = onSeek,
                     onDraggingChanged = onDraggingChanged,
@@ -395,6 +399,7 @@ fun PlayerScreen(
                         },
                         positionMs = positionMs,
                         durationMs = durationMs,
+                        bufferedMs = bufferedMs,
                         isDragging = isDragging,
                         onSeek = onSeek,
                         onDraggingChanged = onDraggingChanged,
@@ -449,6 +454,7 @@ private fun PlayerStage(
     onRetry: () -> Unit,
     positionMs: Long,
     durationMs: Long,
+    bufferedMs: Long,
     isDragging: Boolean,
     onSeek: (Long) -> Unit,
     onDraggingChanged: (Boolean) -> Unit,
@@ -710,7 +716,7 @@ private fun PlayerStage(
                             Text(
                                 text = formatTime((if (isDragging) scrubPositionMs else positionMs) / 1000),
                                 modifier = Modifier.width(50.dp),
-                                style = MaterialTheme.typography.labelSmall,
+                                style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
                                 color = chromeContent,
                                 textAlign = TextAlign.Center,
                                 maxLines = 1,
@@ -719,6 +725,7 @@ private fun PlayerStage(
 
                             VideoSeekBar(
                                 positionMs = positionMs,
+                                bufferedMs = bufferedMs,
                                 durationMs = durationMs,
                                 isPlaying = isPlaying,
                                 onSeek = onSeek,
@@ -730,7 +737,7 @@ private fun PlayerStage(
                             Text(
                                 text = formatTime(durationMs / 1000),
                                 modifier = Modifier.width(50.dp),
-                                style = MaterialTheme.typography.labelSmall,
+                                style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
                                 color = chromeContent,
                                 textAlign = TextAlign.Center,
                                 maxLines = 1,
@@ -969,17 +976,22 @@ private fun PlayerErrorScreen(
                 .fillMaxSize()
                 .background(Color.Black),
     ) {
-        IconButton(
-            onClick = onBack,
+        Box(
             modifier =
                 Modifier
                     .align(Alignment.TopStart)
                     .statusBarsPadding()
-                    .padding(8.dp),
+                    .padding(6.dp)
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.14f))
+                    .clickable(onClick = onBack),
+            contentAlignment = Alignment.Center,
         ) {
             Icon(
                 painter = painterResource(R.drawable.ic_arrow_back_rounded),
                 contentDescription = stringResource(R.string.player_back),
+                modifier = Modifier.size(20.dp),
                 tint = Color.White,
             )
         }

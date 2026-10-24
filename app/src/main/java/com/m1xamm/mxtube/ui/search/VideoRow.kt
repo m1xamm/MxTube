@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -50,12 +51,17 @@ fun VideoRow(
     bottomCorner: Dp = 28.dp,
 ) {
     val placeholder = ColorPainter(MaterialTheme.colorScheme.surfaceContainerHigh)
+    val darkTheme = MaterialTheme.colorScheme.surfaceContainerHighest.luminance() < 0.5f
     val cardColor =
-        lerp(
-            MaterialTheme.colorScheme.surfaceContainerHighest,
-            MaterialTheme.colorScheme.onSurface,
-            0.07f,
-        )
+        if (darkTheme) {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        } else {
+            lerp(
+                MaterialTheme.colorScheme.surfaceContainerHighest,
+                MaterialTheme.colorScheme.onSurface,
+                0.07f,
+            )
+        }
     val duration = formatDuration(video.durationSeconds)
     val channel = video.uploader.ifBlank { stringResource(R.string.unknown_channel) }
     val views = if (video.viewCount >= 0) compactCount(video.viewCount) else ""

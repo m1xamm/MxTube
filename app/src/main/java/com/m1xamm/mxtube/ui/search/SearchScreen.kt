@@ -3,8 +3,12 @@
 package com.m1xamm.mxtube.ui.search
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -31,7 +35,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -103,19 +106,7 @@ fun SearchScreen(
         when (state.phase) {
             SearchPhase.Idle -> Spacer(Modifier.weight(1f))
 
-            SearchPhase.Loading ->
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .weight(1f),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    LoadingIndicator(
-                        modifier = Modifier.size(64.dp),
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
+            SearchPhase.Loading -> SearchSkeleton(modifier = Modifier.weight(1f))
 
             SearchPhase.Error ->
                 MessageState(
@@ -334,10 +325,9 @@ private fun VideoList(
                             .padding(vertical = 14.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
+                    LoadingIndicator(
+                        modifier = Modifier.size(24.dp),
                         color = MaterialTheme.colorScheme.primary,
-                        strokeWidth = 2.dp,
                     )
                 }
             }
@@ -361,6 +351,38 @@ private fun VideoList(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SearchSkeleton(modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "search-skeleton")
+    val alpha by
+        transition.animateFloat(
+            initialValue = 0.45f,
+            targetValue = 0.8f,
+            animationSpec =
+                infiniteRepeatable(
+                    animation = tween(900),
+                    repeatMode = RepeatMode.Reverse,
+                ),
+            label = "search-skeleton-alpha",
+        )
+
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 16.dp, top = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        repeat(5) { index ->
+            VideoRowSkeleton(
+                alpha = alpha,
+                topCorner = if (index == 0) 28.dp else 4.dp,
+                bottomCorner = if (index == 4) 28.dp else 4.dp,
+            )
         }
     }
 }
