@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960">
+    <path
+        android:fillColor="#FF000000"
+        android:fillType="evenOdd"
+        android:pathData="M340 80H620Q760 80 760 220V740Q760 880 620 880H340Q200 880 200 740V220Q200 80 340 80ZM375 330Q375 315 388 307Q401 299 414 307L573 432Q585 440 585 480Q585 520 573 528L414 653Q401 661 388 653Q375 645 375 630Z" />
+</vector>

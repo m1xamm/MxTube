@@ -170,7 +170,7 @@ private fun HomeVideoList(
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 28.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 80.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         itemsIndexed(
@@ -242,7 +242,7 @@ private fun HomeSkeleton() {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 28.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 80.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         itemsIndexed(List(4) { it }) { index, _ ->

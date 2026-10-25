@@ -90,6 +90,7 @@ fun SearchScreen(
     searchListState: LazyListState,
     homeListState: LazyListState,
     onVideoClick: (VideoSummary, Set<String>, String?, List<VideoSummary>) -> Unit,
+    onSearchActiveChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -98,6 +99,10 @@ fun SearchScreen(
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
     var showClearHistoryDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(state.isSearchActive) {
+        onSearchActiveChange(state.isSearchActive)
+    }
 
     val submitSearch: (String) -> Unit = { query ->
         keyboard?.hide()
