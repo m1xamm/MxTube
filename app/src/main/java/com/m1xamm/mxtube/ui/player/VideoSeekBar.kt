@@ -18,12 +18,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -87,6 +89,24 @@ fun VideoSeekBar(
             animationSpec = tween(220),
             label = "seek-wave-level",
         )
+
+    val wavePhase = remember { mutableFloatStateOf(0f) }
+    val waveMoving = isPlaying && !dragging
+    LaunchedEffect(waveMoving) {
+        if (!waveMoving) return@LaunchedEffect
+        var previousFrame = 0L
+        while (true) {
+            withFrameNanos { frameTime ->
+                if (previousFrame != 0L) {
+                    val delta =
+                        ((frameTime - previousFrame) / 1_000_000_000f).coerceAtMost(0.05f)
+                    wavePhase.floatValue =
+                        (wavePhase.floatValue + delta * WAVE_TRAVEL_SPEED) % TWO_PI
+                }
+                previousFrame = frameTime
+            }
+        }
+    }
 
     val density = LocalDensity.current
     val inset = with(density) { 6.dp.toPx() }
@@ -162,15 +182,16 @@ fun VideoSeekBar(
                 )
             } else {
                 val path = Path()
+                val travel = wavePhase.floatValue
                 path.moveTo(start, centerY)
                 val step = 0.75.dp.toPx()
                 var x = start
                 while (x < activeEnd) {
-                    val phase = ((x - start) / wavelength) * 2f * PI.toFloat()
+                    val phase = ((x - start) / wavelength) * TWO_PI - travel
                     path.lineTo(x, centerY + sin(phase) * amplitude)
                     x += step
                 }
-                val lastPhase = ((activeEnd - start) / wavelength) * 2f * PI.toFloat()
+                val lastPhase = ((activeEnd - start) / wavelength) * TWO_PI - travel
                 path.lineTo(activeEnd, centerY + sin(lastPhase) * amplitude)
                 drawPath(
                     path = path,
@@ -245,3 +266,6 @@ fun VideoSeekBar(
         )
     }
 }
+
+private val TWO_PI = (2.0 * PI).toFloat()
+private const val WAVE_TRAVEL_SPEED = 3.5f
