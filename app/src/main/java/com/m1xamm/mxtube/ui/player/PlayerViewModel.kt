@@ -17,6 +17,8 @@ data class PlayerUiState(
     val error: Boolean = false,
     val info: PlaybackInfo? = null,
     val selectedQualityIndex: Int = 0,
+    val selectedAudioTrackIndex: Int = -1,
+    val selectedSubtitleIndex: Int = -1,
 )
 
 class PlayerViewModel(
@@ -44,6 +46,7 @@ class PlayerViewModel(
                             isLoading = false,
                             info = info,
                             selectedQualityIndex = info.defaultQualityIndex,
+                            selectedAudioTrackIndex = info.defaultAudioTrackIndex,
                         )
                 } catch (cancelled: CancellationException) {
                     throw cancelled
@@ -57,5 +60,17 @@ class PlayerViewModel(
         val info = _uiState.value.info ?: return
         if (index !in info.qualities.indices) return
         _uiState.update { it.copy(selectedQualityIndex = index) }
+    }
+
+    fun selectAudioTrack(index: Int) {
+        val info = _uiState.value.info ?: return
+        if (index !in info.audioTracks.indices) return
+        _uiState.update { it.copy(selectedAudioTrackIndex = index) }
+    }
+
+    fun selectSubtitle(index: Int) {
+        val info = _uiState.value.info ?: return
+        if (index != -1 && index !in info.subtitles.indices) return
+        _uiState.update { it.copy(selectedSubtitleIndex = index) }
     }
 }

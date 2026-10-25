@@ -63,9 +63,10 @@ class YouTubeSmokeTest {
         val info = repository.resolve(video.url)
 
         println("resolved: ${info.title} | ${info.qualities.size} qualities")
+        println("audio tracks: ${info.audioTracks.map { it.label }}")
         println(
             info.qualities.joinToString { quality ->
-                "${quality.label} ${quality.videoMimeType} audio=${quality.audioUrl != null}"
+                "${quality.label} ${quality.videoMimeType}"
             },
         )
 

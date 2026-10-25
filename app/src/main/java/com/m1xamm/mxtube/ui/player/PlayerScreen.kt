@@ -66,6 +66,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -75,6 +76,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -88,20 +90,27 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import com.m1xamm.mxtube.R
+import com.m1xamm.mxtube.data.youtube.PlaybackAudioTrack
 import com.m1xamm.mxtube.data.youtube.PlaybackInfo
 import com.m1xamm.mxtube.data.youtube.PlaybackQuality
+import com.m1xamm.mxtube.data.youtube.PlaybackSubtitle
 import com.m1xamm.mxtube.data.youtube.VideoSummary
 import com.m1xamm.mxtube.playback.PlaybackHolder
 import com.m1xamm.mxtube.playback.PlaybackService
@@ -135,6 +144,10 @@ fun PlayerScreen(
     viewModel: PlayerViewModel = viewModel(key = video.url) { PlayerViewModel(video.url) },
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val info = state.info
+    val hazeState = rememberHazeState()
+    val selectedSubtitle = info?.subtitles?.getOrNull(state.selectedSubtitleIndex)
+    val currentSubtitle = rememberUpdatedState(selectedSubtitle)
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
     val darkTheme = isSystemInDarkTheme()
@@ -212,20 +225,25 @@ fun PlayerScreen(
                     isBuffering = false
                     controlsVisible = true
                 }
+
+                override fun onTracksChanged(tracks: Tracks) {
+                    applySubtitleSelection(exoPlayer, currentSubtitle.value)
+                }
             }
 
         exoPlayer.addListener(listener)
         onDispose { exoPlayer.removeListener(listener) }
     }
 
-    LaunchedEffect(state.info, state.selectedQualityIndex, reloadToken) {
+    LaunchedEffect(state.info, state.selectedQualityIndex, state.selectedAudioTrackIndex, reloadToken) {
         val info = state.info ?: return@LaunchedEffect
         val quality = info.qualities.getOrNull(state.selectedQualityIndex) ?: return@LaunchedEffect
+        val audioTrack = info.audioTracks.getOrNull(state.selectedAudioTrackIndex)
 
         try {
             val resumePosition = if (hasSource) exoPlayer.currentPosition else 0L
             val resumePlaying = if (hasSource) exoPlayer.playWhenReady else true
-            val source = buildMediaSource(context, quality, info)
+            val source = buildMediaSource(context, quality, audioTrack, info)
 
             exoPlayer.setMediaSource(source)
             exoPlayer.prepare()
@@ -238,6 +256,10 @@ fun PlayerScreen(
         } catch (_: Exception) {
             playbackError = true
         }
+    }
+
+    LaunchedEffect(exoPlayer, selectedSubtitle) {
+        applySubtitleSelection(exoPlayer, selectedSubtitle)
     }
 
     LaunchedEffect(exoPlayer, isDragging) {
@@ -298,7 +320,6 @@ fun PlayerScreen(
         }
     }
 
-    val info = state.info
     val toggleFullscreen = {
         isFullscreen = !isFullscreen
         controlsVisible = true
@@ -348,94 +369,104 @@ fun PlayerScreen(
         }
 
         else -> {
-            if (isFullscreen) {
-                PlayerStage(
-                    exoPlayer = exoPlayer,
-                    title = info.title.ifBlank { video.title },
-                    isFullscreen = true,
-                    onBack = handleBack,
-                    onToggleFullscreen = toggleFullscreen,
-                    onOpenSettings = onOpenSettings,
-                    controlsVisible = controlsVisible,
-                    onToggleControls = { controlsVisible = !controlsVisible },
-                    onHideControls = { controlsVisible = false },
-                    isPlaying = isPlaying,
-                    isBuffering = isBuffering,
-                    playbackError = playbackError,
-                    onRetry = {
-                        playbackError = false
-                        reloadToken++
-                    },
-                    positionMs = positionMs,
-                    durationMs = durationMs,
-                    bufferedMs = bufferedMs,
-                    isDragging = isDragging,
-                    onSeek = onSeek,
-                    onDraggingChanged = onDraggingChanged,
-                    onPlayPause = onPlayPause,
-                    modifier = modifier.fillMaxSize(),
-                )
-            } else {
-                Column(
-                    modifier =
-                        modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.background),
-                ) {
-                    Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+            Box(modifier = modifier.fillMaxSize()) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    if (isFullscreen) {
+                        PlayerStage(
+                            exoPlayer = exoPlayer,
+                            hazeState = hazeState,
+                            title = info.title.ifBlank { video.title },
+                            isFullscreen = true,
+                            onBack = handleBack,
+                            onToggleFullscreen = toggleFullscreen,
+                            onOpenSettings = onOpenSettings,
+                            controlsVisible = controlsVisible && !settingsOpen,
+                            onToggleControls = { controlsVisible = !controlsVisible },
+                            onHideControls = { controlsVisible = false },
+                            isPlaying = isPlaying,
+                            isBuffering = isBuffering,
+                            playbackError = playbackError,
+                            onRetry = {
+                                playbackError = false
+                                reloadToken++
+                            },
+                            positionMs = positionMs,
+                            durationMs = durationMs,
+                            bufferedMs = bufferedMs,
+                            isDragging = isDragging,
+                            onSeek = onSeek,
+                            onDraggingChanged = onDraggingChanged,
+                            onPlayPause = onPlayPause,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        Column(
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.background),
+                        ) {
+                            Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
 
-                    PlayerStage(
-                        exoPlayer = exoPlayer,
-                        title = info.title.ifBlank { video.title },
-                        isFullscreen = false,
-                        onBack = handleBack,
-                        onToggleFullscreen = toggleFullscreen,
-                        onOpenSettings = onOpenSettings,
-                        controlsVisible = controlsVisible,
-                        onToggleControls = { controlsVisible = !controlsVisible },
-                        onHideControls = { controlsVisible = false },
-                        isPlaying = isPlaying,
-                        isBuffering = isBuffering,
-                        playbackError = playbackError,
-                        onRetry = {
-                            playbackError = false
-                            reloadToken++
-                        },
-                        positionMs = positionMs,
-                        durationMs = durationMs,
-                        bufferedMs = bufferedMs,
-                        isDragging = isDragging,
-                        onSeek = onSeek,
-                        onDraggingChanged = onDraggingChanged,
-                        onPlayPause = onPlayPause,
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(16f / 9f),
-                    )
+                            PlayerStage(
+                                exoPlayer = exoPlayer,
+                                hazeState = hazeState,
+                                title = info.title.ifBlank { video.title },
+                                isFullscreen = false,
+                                onBack = handleBack,
+                                onToggleFullscreen = toggleFullscreen,
+                                onOpenSettings = onOpenSettings,
+                                controlsVisible = controlsVisible && !settingsOpen,
+                                onToggleControls = { controlsVisible = !controlsVisible },
+                                onHideControls = { controlsVisible = false },
+                                isPlaying = isPlaying,
+                                isBuffering = isBuffering,
+                                playbackError = playbackError,
+                                onRetry = {
+                                    playbackError = false
+                                    reloadToken++
+                                },
+                                positionMs = positionMs,
+                                durationMs = durationMs,
+                                bufferedMs = bufferedMs,
+                                isDragging = isDragging,
+                                onSeek = onSeek,
+                                onDraggingChanged = onDraggingChanged,
+                                onPlayPause = onPlayPause,
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(16f / 9f),
+                            )
 
-                    PlayerDetails(
-                        video = video,
+                            PlayerDetails(
+                                video = video,
+                                info = info,
+                                related = related,
+                                onRelatedClick = onRelatedClick,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                }
+
+                if (settingsOpen) {
+                    PlayerSettingsOverlay(
                         info = info,
-                        related = related,
-                        onRelatedClick = onRelatedClick,
-                        modifier = Modifier.weight(1f),
+                        selectedQualityIndex = state.selectedQualityIndex,
+                        selectedAudioTrackIndex = state.selectedAudioTrackIndex,
+                        selectedSubtitleIndex = state.selectedSubtitleIndex,
+                        speed = speed,
+                        onDismiss = { settingsOpen = false },
+                        onQualitySelected = viewModel::selectQuality,
+                        onAudioTrackSelected = viewModel::selectAudioTrack,
+                        onSubtitleSelected = viewModel::selectSubtitle,
+                        onSpeedSelected = { value ->
+                            speed = value
+                            exoPlayer.setPlaybackSpeed(value)
+                        },
                     )
                 }
-            }
-
-            if (settingsOpen) {
-                PlayerSettingsSheet(
-                    info = info,
-                    selectedQualityIndex = state.selectedQualityIndex,
-                    speed = speed,
-                    onDismiss = { settingsOpen = false },
-                    onQualitySelected = viewModel::selectQuality,
-                    onSpeedSelected = { value ->
-                        speed = value
-                        exoPlayer.setPlaybackSpeed(value)
-                    },
-                )
             }
         }
     }
@@ -444,6 +475,7 @@ fun PlayerScreen(
 @Composable
 private fun PlayerStage(
     exoPlayer: ExoPlayer,
+    hazeState: HazeState,
     title: String,
     isFullscreen: Boolean,
     onBack: () -> Unit,
@@ -471,7 +503,6 @@ private fun PlayerStage(
     var scrubPositionMs by remember { mutableLongStateOf(positionMs) }
     val playShape = MaterialShapes.Cookie9Sided.toShape()
     val feedbackShape = MaterialShapes.Cookie9Sided.toShape()
-    val hazeState = rememberHazeState()
     val playInteractionSource = remember { MutableInteractionSource() }
     val playPressed by playInteractionSource.collectIsPressedAsState()
     val playScale by
@@ -485,6 +516,7 @@ private fun PlayerStage(
             label = "play-scale",
         )
     val chromeContent = MaterialTheme.colorScheme.onSurface
+    val subtitleShift = with(LocalDensity.current) { if (controlsVisible) 40.dp.toPx() else 0f }
     val playButtonState =
         when {
             isBuffering -> PlayButtonState.Buffering
@@ -525,10 +557,29 @@ private fun PlayerStage(
                     setOnTouchListener { _, _ -> false }
                     keepScreenOn = true
                     setShutterBackgroundColor(android.graphics.Color.BLACK)
+                    getSubtitleView()?.apply {
+                        setApplyEmbeddedStyles(false)
+                        setApplyEmbeddedFontSizes(false)
+                        setStyle(
+                            CaptionStyleCompat(
+                                android.graphics.Color.WHITE,
+                                android.graphics.Color.argb(191, 0, 0, 0),
+                                android.graphics.Color.TRANSPARENT,
+                                CaptionStyleCompat.EDGE_TYPE_NONE,
+                                android.graphics.Color.WHITE,
+                                null,
+                            ),
+                        )
+                        setFractionalTextSize(0.075f)
+                        setBottomPaddingFraction(0.22f)
+                    }
                     player = exoPlayer
                 }
             },
-            update = { it.player = exoPlayer },
+            update = { view ->
+                view.player = exoPlayer
+                view.getSubtitleView()?.translationY = -subtitleShift
+            },
             modifier =
                 Modifier
                     .fillMaxSize()
@@ -978,6 +1029,7 @@ private fun PlayerDetails(
 private fun buildMediaSource(
     context: Context,
     quality: PlaybackQuality,
+    audioTrack: PlaybackAudioTrack?,
     info: PlaybackInfo,
 ): MediaSource {
     val httpDataSourceFactory =
@@ -997,17 +1049,26 @@ private fun buildMediaSource(
             )
             .build()
 
-    val videoSource =
-        ProgressiveMediaSource.Factory(dataSourceFactory)
-            .createMediaSource(
-                MediaItem.Builder()
-                    .setUri(quality.videoUrl)
-                    .setMimeType(quality.videoMimeType)
-                    .setMediaMetadata(metadata)
-                    .build(),
-            )
+    val subtitleConfigurations =
+        info.subtitles.map { subtitle ->
+            MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitle.url))
+                .setMimeType(subtitle.mimeType)
+                .setLanguage(subtitle.languageTag)
+                .setLabel(subtitle.label)
+                .setId(subtitle.id)
+                .build()
+        }
 
-    val audioUrl = quality.audioUrl
+    val videoItem =
+        MediaItem.Builder()
+            .setUri(quality.videoUrl)
+            .setMimeType(quality.videoMimeType)
+            .setMediaMetadata(metadata)
+            .setSubtitleConfigurations(subtitleConfigurations)
+            .build()
+    val videoSource = DefaultMediaSourceFactory(dataSourceFactory).createMediaSource(videoItem)
+
+    val audioUrl = audioTrack?.url
     if (audioUrl.isNullOrBlank()) return videoSource
 
     val audioSource =
@@ -1015,9 +1076,56 @@ private fun buildMediaSource(
             .createMediaSource(
                 MediaItem.Builder()
                     .setUri(audioUrl)
-                    .setMimeType(quality.audioMimeType ?: "audio/mp4")
+                    .setMimeType(audioTrack.mimeType.ifBlank { "audio/mp4" })
                     .build(),
             )
 
     return MergingMediaSource(videoSource, audioSource)
+}
+
+private fun applySubtitleSelection(
+    player: ExoPlayer,
+    subtitle: PlaybackSubtitle?,
+) {
+    val builder =
+        player.trackSelectionParameters
+            .buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+
+    if (subtitle == null) {
+        player.trackSelectionParameters =
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
+        return
+    }
+
+    val group =
+        player.currentTracks.groups.firstOrNull { trackGroup ->
+            trackGroup.type == C.TRACK_TYPE_TEXT &&
+                (0 until trackGroup.length).any {
+                    val format = trackGroup.getTrackFormat(it)
+                    format.id?.endsWith(subtitle.id) == true ||
+                        (format.language == subtitle.languageTag && format.label == subtitle.label)
+                }
+        }
+    val trackIndex =
+        group?.let { trackGroup ->
+            (0 until trackGroup.length).firstOrNull {
+                val format = trackGroup.getTrackFormat(it)
+                format.id?.endsWith(subtitle.id) == true ||
+                    (format.language == subtitle.languageTag && format.label == subtitle.label)
+            }
+        }
+
+    player.trackSelectionParameters =
+        if (group != null && trackIndex != null) {
+            builder
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, trackIndex))
+                .build()
+        } else {
+            builder
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                .setPreferredTextLabels(subtitle.label)
+                .build()
+        }
 }

@@ -15,6 +15,16 @@
     <string name="player_settings">Настройки</string>
     <string name="player_quality">Качество</string>
     <string name="player_speed">Скорость</string>
+    <string name="player_audio_track">Аудиодорожка</string>
+    <string name="player_audio_original">Оригинал</string>
+    <string name="player_subtitles">Субтитры</string>
+    <string name="player_subtitles_off">Выкл.</string>
+    <string name="player_subtitles_auto">Авто</string>
+    <string name="player_subtitles_empty">Для этого видео субтитров нет.</string>
+    <string name="player_none">Нет</string>
+    <string name="player_more">Ещё</string>
+    <string name="player_speed_down">Медленнее</string>
+    <string name="player_speed_up">Быстрее</string>
     <string name="close">Закрыть</string>
     <string name="player_play">Смотреть</string>
     <string name="player_pause">Пауза</string>
