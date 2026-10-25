@@ -27,8 +27,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -38,6 +36,8 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.m1xamm.mxtube.R
 import com.m1xamm.mxtube.data.youtube.VideoSummary
+import com.m1xamm.mxtube.ui.common.clusterCardColor
+import com.m1xamm.mxtube.ui.common.clusterInnerColor
 import com.m1xamm.mxtube.ui.common.compactCount
 import com.m1xamm.mxtube.ui.common.formatDuration
 import com.m1xamm.mxtube.ui.common.formatRelativeDate
@@ -50,24 +50,9 @@ fun VideoRow(
     topCorner: Dp = 28.dp,
     bottomCorner: Dp = 28.dp,
 ) {
-    val darkTheme = MaterialTheme.colorScheme.surfaceContainerHighest.luminance() < 0.5f
-    val placeholderColor =
-        if (darkTheme) {
-            MaterialTheme.colorScheme.surfaceContainerHighest
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerHigh
-        }
+    val placeholderColor = clusterInnerColor()
     val placeholder = ColorPainter(placeholderColor)
-    val cardColor =
-        if (darkTheme) {
-            MaterialTheme.colorScheme.surfaceContainerHigh
-        } else {
-            lerp(
-                MaterialTheme.colorScheme.surfaceContainerHighest,
-                MaterialTheme.colorScheme.onSurface,
-                0.07f,
-            )
-        }
+    val cardColor = clusterCardColor()
     val duration = formatDuration(video.durationSeconds)
     val channel = video.uploader.ifBlank { stringResource(R.string.unknown_channel) }
     val views = if (video.viewCount >= 0) compactCount(video.viewCount) else ""
@@ -127,7 +112,7 @@ fun VideoRow(
                     Modifier
                         .width(140.dp)
                         .aspectRatio(16f / 9f)
-                        .clip(RoundedCornerShape(18.dp))
+                        .clip(RoundedCornerShape(20.dp))
                         .background(placeholderColor),
             ) {
                 AsyncImage(

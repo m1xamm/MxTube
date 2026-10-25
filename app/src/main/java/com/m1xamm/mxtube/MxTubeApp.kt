@@ -16,32 +16,48 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.m1xamm.mxtube.data.home.HomeTopics
 import com.m1xamm.mxtube.data.youtube.VideoSummary
 import com.m1xamm.mxtube.playback.PlaybackHolder
 import com.m1xamm.mxtube.playback.PlaybackService
+import com.m1xamm.mxtube.ui.home.HomeViewModel
 import com.m1xamm.mxtube.ui.player.PlayerScreen
 import com.m1xamm.mxtube.ui.search.SearchScreen
 import com.m1xamm.mxtube.ui.search.SearchViewModel
+import kotlinx.coroutines.launch
 
 @Composable
 fun MxTubeApp() {
     var selectedVideo by remember { mutableStateOf<VideoSummary?>(null) }
     var shownVideo by remember { mutableStateOf<VideoSummary?>(null) }
+    var playerRelated by remember { mutableStateOf<List<VideoSummary>>(emptyList()) }
     val context = LocalContext.current
-    val searchViewModel: SearchViewModel = viewModel { SearchViewModel() }
-    val searchState by searchViewModel.uiState.collectAsStateWithLifecycle()
-    val listState = rememberLazyListState()
+    val application = context.applicationContext as MxTubeApplication
+    val historyStore = application.historyStore
+    val scope = rememberCoroutineScope()
+    val homeViewModel: HomeViewModel =
+        viewModel { HomeViewModel(application.historyStore, application.homeFeedCache) }
+    val searchViewModel: SearchViewModel = viewModel { SearchViewModel(historyStore) }
+    val homeListState = rememberLazyListState()
+    val searchListState = rememberLazyListState()
 
     Box(Modifier.fillMaxSize()) {
         SearchScreen(
             viewModel = searchViewModel,
-            listState = listState,
-            onVideoClick = { video ->
+            homeViewModel = homeViewModel,
+            searchListState = searchListState,
+            homeListState = homeListState,
+            onVideoClick = { video, topics, sourceQuery, related ->
+                scope.launch {
+                    historyStore.recordWatch(video, topics, sourceQuery)
+                    homeViewModel.onWatchRecorded()
+                }
+                playerRelated = related.filter { it.url != video.url }.take(8)
                 shownVideo = video
                 selectedVideo = video
             },
@@ -71,13 +87,17 @@ fun MxTubeApp() {
                 key(video.url) {
                     PlayerScreen(
                         video = video,
-                        related =
-                            searchState.videos
-                                .asSequence()
-                                .filter { it.url != video.url }
-                                .take(8)
-                                .toList(),
+                        related = playerRelated,
                         onRelatedClick = { next ->
+                            scope.launch {
+                                historyStore.recordWatch(
+                                    next,
+                                    HomeTopics.topicsFor(null, next.title, next.uploader),
+                                )
+                                homeViewModel.onWatchRecorded()
+                            }
+                            playerRelated =
+                                playerRelated.filter { it.url != next.url }.take(8)
                             shownVideo = next
                             selectedVideo = next
                         },
@@ -85,6 +105,12 @@ fun MxTubeApp() {
                             PlaybackHolder.stop()
                             PlaybackService.stop(context)
                             selectedVideo = null
+                            homeViewModel.onHomeVisible()
+                        },
+                        onWatchProgress = { positionMs ->
+                            scope.launch {
+                                historyStore.updateWatchProgress(video.url, positionMs)
+                            }
                         },
                         modifier = Modifier.fillMaxSize(),
                     )

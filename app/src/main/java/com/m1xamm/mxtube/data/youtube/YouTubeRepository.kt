@@ -7,6 +7,7 @@ import org.schabi.newpipe.extractor.ListExtractor.InfoItemsPage
 import org.schabi.newpipe.extractor.MediaFormat
 import org.schabi.newpipe.extractor.Page
 import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.kiosk.KioskExtractor
 import org.schabi.newpipe.extractor.search.SearchExtractor
 import org.schabi.newpipe.extractor.stream.AudioStream
 import org.schabi.newpipe.extractor.stream.AudioTrackType
@@ -21,6 +22,16 @@ private val UI_LOCALE = Locale.forLanguageTag("ru")
 class YouTubeRepository {
     fun search(query: String): YouTubeSearchSession =
         YouTubeSearchSession(ServiceList.YouTube.getSearchExtractor(query))
+
+    fun kiosk(kioskId: String): YouTubeKioskSession =
+        YouTubeKioskSession(ServiceList.YouTube.kioskList.getExtractorById(kioskId, null))
+
+    suspend fun related(url: String): List<VideoSummary> =
+        withContext(Dispatchers.IO) {
+            val extractor = ServiceList.YouTube.getStreamExtractor(url)
+            extractor.fetchPage()
+            extractor.relatedItems?.items?.videos().orEmpty()
+        }
 
     suspend fun resolve(url: String): PlaybackInfo =
         withContext(Dispatchers.IO) {
@@ -193,7 +204,8 @@ class YouTubeRepository {
         return base.replaceFirstChar { it.titlecase(UI_LOCALE) }
     }
 
-    private fun defaultQualityIndex(qualities: List<PlaybackQuality>): Int {        for (height in listOf(720, 1080, 480, 360)) {
+    private fun defaultQualityIndex(qualities: List<PlaybackQuality>): Int {
+        for (height in listOf(720, 1080, 480, 360)) {
             val index = qualities.indexOfFirst { it.height == height }
             if (index >= 0) return index
         }
@@ -228,9 +240,33 @@ class YouTubeSearchSession internal constructor(
         }
 }
 
-private fun InfoItemsPage<InfoItem>.videos(): List<VideoSummary> =
-    items
-        .filterIsInstance<StreamInfoItem>()
+class YouTubeKioskSession internal constructor(
+    private val extractor: KioskExtractor<*>,
+) {
+    private var nextPage: Page? = null
+
+    val hasMore: Boolean
+        get() = nextPage != null
+
+    suspend fun first(): SearchBatch =
+        withContext(Dispatchers.IO) {
+            extractor.fetchPage()
+            val page = extractor.initialPage
+            nextPage = if (page.hasNextPage()) page.nextPage else null
+            SearchBatch(videos = page.items.videos(), hasMore = hasMore)
+        }
+
+    suspend fun loadMore(): SearchBatch =
+        withContext(Dispatchers.IO) {
+            val page = nextPage ?: return@withContext SearchBatch(emptyList(), false)
+            val result = extractor.getPage(page)
+            nextPage = if (result.hasNextPage()) result.nextPage else null
+            SearchBatch(videos = result.items.videos(), hasMore = hasMore)
+        }
+}
+
+internal fun List<InfoItem>.videos(): List<VideoSummary> =
+    filterIsInstance<StreamInfoItem>()
         .filter { it.streamType == StreamType.VIDEO_STREAM && !it.isShortFormContent }
         .map { item ->
             VideoSummary(
@@ -244,6 +280,8 @@ private fun InfoItemsPage<InfoItem>.videos(): List<VideoSummary> =
             )
         }
         .distinctBy { it.url }
+
+private fun InfoItemsPage<InfoItem>.videos(): List<VideoSummary> = items.videos()
 
 private fun List<org.schabi.newpipe.extractor.Image>.bestUrl(): String? =
     maxByOrNull { it.width.toLong() * it.height }?.url

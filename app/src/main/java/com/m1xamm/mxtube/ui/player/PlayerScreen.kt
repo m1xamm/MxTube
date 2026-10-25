@@ -140,6 +140,7 @@ fun PlayerScreen(
     related: List<VideoSummary>,
     onRelatedClick: (VideoSummary) -> Unit,
     onBack: () -> Unit,
+    onWatchProgress: (Long) -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: PlayerViewModel = viewModel(key = video.url) { PlayerViewModel(video.url) },
 ) {
@@ -175,11 +176,21 @@ fun PlayerScreen(
         } else if (isFullscreen) {
             isFullscreen = false
         } else {
+            val position = exoPlayer.currentPosition
+            if (position > 0) onWatchProgress(position)
             onBack()
         }
     }
 
     BackHandler { handleBack() }
+
+    val progressReporter = rememberUpdatedState(onWatchProgress)
+    DisposableEffect(exoPlayer) {
+        onDispose {
+            val position = exoPlayer.currentPosition
+            if (position > 0) progressReporter.value(position)
+        }
+    }
 
     LaunchedEffect(Unit) {
         PlaybackService.start(context)

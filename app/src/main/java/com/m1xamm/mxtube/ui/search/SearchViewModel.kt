@@ -3,14 +3,19 @@ package com.m1xamm.mxtube.ui.search
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.m1xamm.mxtube.data.local.LocalHistoryStore
+import com.m1xamm.mxtube.data.local.SearchHistoryEntry
 import com.m1xamm.mxtube.data.youtube.VideoSummary
 import com.m1xamm.mxtube.data.youtube.YouTubeRepository
 import com.m1xamm.mxtube.data.youtube.YouTubeSearchSession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -30,13 +35,20 @@ data class SearchUiState(
     val hasMore: Boolean = false,
     val isLoadingMore: Boolean = false,
     val loadMoreError: Boolean = false,
+    val isSearchActive: Boolean = false,
 )
 
 class SearchViewModel(
+    private val historyStore: LocalHistoryStore,
     private val repository: YouTubeRepository = YouTubeRepository(),
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SearchUiState())
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
+
+    val searchHistory: StateFlow<List<SearchHistoryEntry>> =
+        historyStore.state
+            .map { it.searches }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private var session: YouTubeSearchSession? = null
     private var lastQuery: String = ""
@@ -51,6 +63,8 @@ class SearchViewModel(
         }
         if (trimmed == lastQuery && _uiState.value.phase == SearchPhase.Loading) return
 
+        viewModelScope.launch { historyStore.recordSearch(trimmed) }
+
         lastQuery = trimmed
         session = null
         searchJob?.cancel()
@@ -60,6 +74,7 @@ class SearchViewModel(
                 input = query,
                 query = trimmed,
                 phase = SearchPhase.Loading,
+                isSearchActive = true,
             )
 
         searchJob =
@@ -90,7 +105,44 @@ class SearchViewModel(
     }
 
     fun onQueryChange(value: String) {
-        _uiState.update { it.copy(input = value) }
+        if (value.isBlank()) {
+            searchJob?.cancel()
+            loadMoreJob?.cancel()
+            session = null
+            lastQuery = ""
+            _uiState.update {
+                SearchUiState(input = value, isSearchActive = it.isSearchActive)
+            }
+        } else {
+            _uiState.update { it.copy(input = value, isSearchActive = true) }
+        }
+    }
+
+    fun activateSearch() {
+        _uiState.update { it.copy(isSearchActive = true) }
+    }
+
+    fun exitSearch() {
+        searchJob?.cancel()
+        loadMoreJob?.cancel()
+        session = null
+        lastQuery = ""
+        _uiState.value = SearchUiState(isSearchActive = false)
+    }
+
+    fun removeSearchHistory(query: String) {
+        viewModelScope.launch { historyStore.removeSearch(query) }
+    }
+
+    fun clearSearchHistory() {
+        viewModelScope.launch { historyStore.clearSearch() }
+    }
+
+    fun clearAllHistory(onCleared: () -> Unit = {}) {
+        viewModelScope.launch {
+            historyStore.clearAll()
+            onCleared()
+        }
     }
 
     fun retry() {
@@ -102,7 +154,7 @@ class SearchViewModel(
         loadMoreJob?.cancel()
         session = null
         lastQuery = ""
-        _uiState.value = SearchUiState()
+        _uiState.update { SearchUiState(isSearchActive = it.isSearchActive) }
     }
 
     fun loadMore() {

@@ -17,10 +17,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.m1xamm.mxtube.ui.common.clusterCardColor
+import com.m1xamm.mxtube.ui.common.clusterInnerColor
 
 @Composable
 fun VideoRowSkeleton(
@@ -29,23 +29,8 @@ fun VideoRowSkeleton(
     bottomCorner: Dp,
     modifier: Modifier = Modifier,
 ) {
-    val darkTheme = MaterialTheme.colorScheme.surfaceContainerHighest.luminance() < 0.5f
-    val cardColor =
-        if (darkTheme) {
-            MaterialTheme.colorScheme.surfaceContainerHigh
-        } else {
-            lerp(
-                MaterialTheme.colorScheme.surfaceContainerHighest,
-                MaterialTheme.colorScheme.onSurface,
-                0.07f,
-            )
-        }
-    val thumbColor =
-        if (darkTheme) {
-            MaterialTheme.colorScheme.surfaceContainerHighest
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerHigh
-        }
+    val cardColor = clusterCardColor()
+    val thumbColor = clusterInnerColor()
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -70,7 +55,7 @@ fun VideoRowSkeleton(
                     Modifier
                         .width(140.dp)
                         .aspectRatio(16f / 9f)
-                        .clip(RoundedCornerShape(18.dp))
+                        .clip(RoundedCornerShape(20.dp))
                         .background(thumbColor),
             )
 
