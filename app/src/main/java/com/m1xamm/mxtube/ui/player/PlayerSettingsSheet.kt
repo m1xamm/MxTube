@@ -13,6 +13,8 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -23,36 +25,42 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.ToggleButton
-import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -62,12 +70,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.m1xamm.mxtube.R
@@ -76,6 +87,7 @@ import com.m1xamm.mxtube.ui.common.formatSpeed
 import kotlin.math.ln
 import kotlin.math.pow
 import kotlin.math.round
+import kotlin.math.roundToInt
 
 private enum class SettingsPage {
     Quality,
@@ -97,8 +109,12 @@ private enum class MainEntry(
 private const val MIN_SPEED = 0.25f
 private const val MAX_SPEED = 5f
 private const val SPEED_STEP = 0.05f
-private val SPEED_PRESETS =
-    listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f, 4f, 5f)
+private val SPEED_PRESET_ROWS =
+    listOf(
+        listOf(0.25f, 0.5f, 0.75f, 1f),
+        listOf(1.25f, 1.5f, 1.75f, 2f),
+        listOf(2.5f, 3f, 4f, 5f),
+    )
 
 @Composable
 fun PlayerSettingsOverlay(
@@ -123,6 +139,30 @@ fun PlayerSettingsOverlay(
     val panelInteraction = remember { MutableInteractionSource() }
     val darkTheme = MaterialTheme.colorScheme.surfaceContainerHighest.luminance() < 0.5f
     val scrimColor = Color.Black.copy(alpha = if (darkTheme) 0.26f else 0.16f)
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    var settlingDrag by remember { mutableStateOf(false) }
+    val animatedDragOffset by
+        animateFloatAsState(
+            targetValue = if (settlingDrag) 0f else dragOffset,
+            animationSpec =
+                if (settlingDrag) {
+                    spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    )
+                } else {
+                    snap()
+                },
+            label = "settings-drag",
+        )
+    val dismissDragDistance = with(LocalDensity.current) { 96.dp.toPx() }
+
+    LaunchedEffect(settlingDrag, animatedDragOffset) {
+        if (settlingDrag && animatedDragOffset == 0f) {
+            dragOffset = 0f
+            settlingDrag = false
+        }
+    }
 
     BoxWithConstraints(
         modifier =
@@ -174,6 +214,7 @@ fun PlayerSettingsOverlay(
                                     stiffness = Spring.StiffnessMediumLow,
                                 ),
                         )
+                        .offset { IntOffset(0, animatedDragOffset.roundToInt()) }
                         .clip(shape)
                         .background(panelColor)
                         .clickable(
@@ -182,42 +223,80 @@ fun PlayerSettingsOverlay(
                             onClick = {},
                         ),
             ) {
-                AnimatedContent(
-                    targetState = page,
-                    transitionSpec = {
-                        if (targetState != null) {
-                            (slideInHorizontally { it / 4 } + fadeIn(tween(160))) togetherWith
-                                (slideOutHorizontally { -it / 4 } + fadeOut(tween(100)))
+                Column(Modifier.fillMaxWidth()) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .height(24.dp)
+                                .pointerInput(Unit) {
+                                    detectVerticalDragGestures(
+                                        onDragStart = { settlingDrag = false },
+                                        onVerticalDrag = { change, dragAmount ->
+                                            change.consume()
+                                            dragOffset =
+                                                (dragOffset + dragAmount).coerceAtLeast(0f)
+                                        },
+                                        onDragEnd = {
+                                            if (dragOffset > dismissDragDistance) {
+                                                onDismiss()
+                                            } else {
+                                                settlingDrag = true
+                                            }
+                                        },
+                                        onDragCancel = { settlingDrag = true },
+                                    )
+                                },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .width(36.dp)
+                                    .height(4.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.42f),
+                                    ),
+                        )
+                    }
+                    AnimatedContent(
+                        targetState = page,
+                        transitionSpec = {
+                            if (targetState != null) {
+                                (slideInHorizontally { it / 4 } + fadeIn(tween(160))) togetherWith
+                                    (slideOutHorizontally { -it / 4 } + fadeOut(tween(100)))
+                            } else {
+                                (slideInHorizontally { -it / 4 } + fadeIn(tween(160))) togetherWith
+                                    (slideOutHorizontally { it / 4 } + fadeOut(tween(100)))
+                            }
+                        },
+                        label = "settings-page",
+                    ) { currentPage ->
+                        if (currentPage == null) {
+                            MainSettings(
+                                info = info,
+                                selectedQualityIndex = selectedQualityIndex,
+                                selectedAudioTrackIndex = selectedAudioTrackIndex,
+                                selectedSubtitleIndex = selectedSubtitleIndex,
+                                speed = speed,
+                                onOpenPage = { page = it },
+                            )
                         } else {
-                            (slideInHorizontally { -it / 4 } + fadeIn(tween(160))) togetherWith
-                                (slideOutHorizontally { it / 4 } + fadeOut(tween(100)))
+                            SettingsPageContent(
+                                page = currentPage,
+                                info = info,
+                                selectedQualityIndex = selectedQualityIndex,
+                                selectedAudioTrackIndex = selectedAudioTrackIndex,
+                                selectedSubtitleIndex = selectedSubtitleIndex,
+                                speed = speed,
+                                onBack = { page = null },
+                                onQualitySelected = onQualitySelected,
+                                onAudioTrackSelected = onAudioTrackSelected,
+                                onSubtitleSelected = onSubtitleSelected,
+                                onSpeedSelected = onSpeedSelected,
+                            )
                         }
-                    },
-                    label = "settings-page",
-                ) { currentPage ->
-                    if (currentPage == null) {
-                        MainSettings(
-                            info = info,
-                            selectedQualityIndex = selectedQualityIndex,
-                            selectedAudioTrackIndex = selectedAudioTrackIndex,
-                            selectedSubtitleIndex = selectedSubtitleIndex,
-                            speed = speed,
-                            onOpenPage = { page = it },
-                        )
-                    } else {
-                        SettingsPageContent(
-                            page = currentPage,
-                            info = info,
-                            selectedQualityIndex = selectedQualityIndex,
-                            selectedAudioTrackIndex = selectedAudioTrackIndex,
-                            selectedSubtitleIndex = selectedSubtitleIndex,
-                            speed = speed,
-                            onBack = { page = null },
-                            onQualitySelected = onQualitySelected,
-                            onAudioTrackSelected = onAudioTrackSelected,
-                            onSubtitleSelected = onSubtitleSelected,
-                            onSpeedSelected = onSpeedSelected,
-                        )
                     }
                 }
             }
@@ -337,18 +416,14 @@ private fun SettingsPageContent(
                 }
 
                 SettingsPage.Speed -> {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(28.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                    ) {
-                        SpeedPicker(
-                            speed = speed,
-                            onSpeedSelected = onSpeedSelected,
-                            modifier = Modifier.padding(16.dp),
-                        )
-                    }
+                    SpeedPicker(
+                        speed = speed,
+                        onSpeedSelected = onSpeedSelected,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                    )
                 }
 
                 SettingsPage.Audio -> {
@@ -627,85 +702,131 @@ private fun SpeedPicker(
     onSpeedSelected: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val toggleColors =
-        ToggleButtonDefaults.colors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            checkedContainerColor = MaterialTheme.colorScheme.primary,
-            checkedContentColor = MaterialTheme.colorScheme.onPrimary,
-        )
     val sliderColors =
         SliderDefaults.colors(
             thumbColor = MaterialTheme.colorScheme.primary,
             activeTrackColor = MaterialTheme.colorScheme.primary,
             inactiveTrackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.24f),
         )
+    val stepButtonColors =
+        IconButtonDefaults.filledTonalIconButtonColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Text(
-            text = formatSpeed(speed),
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            style = MaterialTheme.typography.headlineMedium.copy(fontFeatureSettings = "tnum"),
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface,
-            textAlign = TextAlign.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = formatSpeed(speed),
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.headlineLarge.copy(fontFeatureSettings = "tnum"),
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+
+            FilledTonalIconButton(
+                onClick = { onSpeedSelected(stepSpeed(speed, -SPEED_STEP)) },
+                enabled = speed > MIN_SPEED,
+                modifier = Modifier.size(40.dp),
+                colors = stepButtonColors,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_remove_rounded),
+                    contentDescription = stringResource(R.string.player_speed_down),
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+
+            FilledTonalIconButton(
+                onClick = { onSpeedSelected(stepSpeed(speed, SPEED_STEP)) },
+                enabled = speed < MAX_SPEED,
+                modifier =
+                    Modifier
+                        .padding(start = 8.dp)
+                        .size(40.dp),
+                colors = stepButtonColors,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_add_rounded),
+                    contentDescription = stringResource(R.string.player_speed_up),
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        Slider(
+            value = speedToFraction(speed),
+            onValueChange = { onSpeedSelected(fractionToSpeed(it)) },
+            modifier = Modifier.fillMaxWidth(),
+            colors = sliderColors,
         )
 
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(
-                onClick = { onSpeedSelected(stepSpeed(speed, -SPEED_STEP)) },
-                enabled = speed > MIN_SPEED,
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_remove_rounded),
-                    contentDescription = stringResource(R.string.player_speed_down),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            Slider(
-                value = speedToFraction(speed),
-                onValueChange = { onSpeedSelected(fractionToSpeed(it)) },
-                modifier = Modifier.weight(1f),
-                colors = sliderColors,
+            Text(
+                text = formatSpeed(MIN_SPEED),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-
-            IconButton(
-                onClick = { onSpeedSelected(stepSpeed(speed, SPEED_STEP)) },
-                enabled = speed < MAX_SPEED,
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_add_rounded),
-                    contentDescription = stringResource(R.string.player_speed_up),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = formatSpeed(MAX_SPEED),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            SPEED_PRESETS.forEach { preset ->
-                ToggleButton(
-                    checked = speed == preset,
-                    onCheckedChange = { checked ->
-                        if (checked) onSpeedSelected(preset)
-                    },
-                    colors = toggleColors,
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+        Spacer(Modifier.height(18.dp))
+
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SPEED_PRESET_ROWS.forEach { presets ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text(
-                        text = formatSpeed(preset),
-                        style = MaterialTheme.typography.labelMedium,
-                    )
+                    presets.forEach { preset ->
+                        val selected = speed == preset
+                        Surface(
+                            onClick = { onSpeedSelected(preset) },
+                            modifier =
+                                Modifier
+                                    .weight(1f)
+                                    .height(40.dp),
+                            shape = RoundedCornerShape(50),
+                            color =
+                                if (selected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceContainerHighest
+                                },
+                            contentColor =
+                                if (selected) {
+                                    MaterialTheme.colorScheme.onPrimary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                        ) {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = formatSpeed(preset),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight =
+                                        if (selected) {
+                                            FontWeight.SemiBold
+                                        } else {
+                                            FontWeight.Medium
+                                        },
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
