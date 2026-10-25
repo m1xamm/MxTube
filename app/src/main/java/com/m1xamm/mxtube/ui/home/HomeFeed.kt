@@ -2,18 +2,11 @@
 
 package com.m1xamm.mxtube.ui.home
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,13 +22,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ToggleButtonDefaults
+import androidx.compose.material3.ToggleButtonSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -43,10 +38,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.m1xamm.mxtube.R
@@ -111,116 +106,35 @@ private fun HomeTopicChips(
 ) {
     LazyRow(
         modifier = Modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 7.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
     ) {
         itemsIndexed(items = topics, key = { _, topic -> topic.id }) { index, topic ->
-            TopicChip(
-                topic = topic,
-                selected = topic.id == selectedTopicId,
-                isFirst = index == 0,
-                isLast = index == topics.lastIndex,
-                onClick = { onTopicSelected(topic.id) },
-            )
-        }
-    }
-}
-
-@Composable
-private fun TopicChip(
-    topic: HomeTopic,
-    selected: Boolean,
-    isFirst: Boolean,
-    isLast: Boolean,
-    onClick: () -> Unit,
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val restStart = if (selected || isFirst) 20.dp else 4.dp
-    val restEnd = if (selected || isLast) 20.dp else 4.dp
-    val startCorner by
-        animateDpAsState(
-            targetValue = if (pressed) 20.dp else restStart,
-            animationSpec =
-                spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness = Spring.StiffnessMediumLow,
-                ),
-            label = "home-topic-start-corner",
-        )
-    val endCorner by
-        animateDpAsState(
-            targetValue = if (pressed) 20.dp else restEnd,
-            animationSpec =
-                spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness = Spring.StiffnessMediumLow,
-                ),
-            label = "home-topic-end-corner",
-        )
-    val scale by
-        animateFloatAsState(
-            targetValue = if (pressed) 0.95f else 1f,
-            animationSpec =
-                spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness = Spring.StiffnessMedium,
-                ),
-            label = "home-topic-scale",
-        )
-    val container by
-        animateColorAsState(
-            targetValue =
-                when {
-                    selected -> MaterialTheme.colorScheme.primary
-                    pressed -> MaterialTheme.colorScheme.surfaceContainerHighest
-                    else -> MaterialTheme.colorScheme.surfaceContainerHigh
-                },
-            animationSpec = tween(160),
-            label = "home-topic-container",
-        )
-    val content by
-        animateColorAsState(
-            targetValue =
-                if (selected) {
-                    MaterialTheme.colorScheme.onPrimary
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-            animationSpec = tween(160),
-            label = "home-topic-content",
-        )
-
-    Surface(
-        onClick = onClick,
-        interactionSource = interactionSource,
-        modifier =
-            Modifier
-                .height(42.dp)
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                }
-                .semantics { this.selected = selected },
-        shape =
-            RoundedCornerShape(
-                topStart = startCorner,
-                topEnd = endCorner,
-                bottomEnd = endCorner,
-                bottomStart = startCorner,
-            ),
-        color = container,
-        contentColor = content,
-    ) {
-        Box(
-            modifier = Modifier.padding(horizontal = 16.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = topic.label,
-                style = MaterialTheme.typography.labelLarge,
-                maxLines = 1,
-            )
+            ToggleButton(
+                checked = topic.id == selectedTopicId,
+                onCheckedChange = { onTopicSelected(topic.id) },
+                buttonSize = ToggleButtonSize.Small,
+                shapes =
+                    when (index) {
+                        0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                        topics.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                        else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                    },
+                colors =
+                    ToggleButtonDefaults.colors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        checkedContainerColor = MaterialTheme.colorScheme.primary,
+                        checkedContentColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
+                elevation = null,
+                modifier = Modifier.semantics { role = Role.RadioButton },
+            ) {
+                Text(
+                    text = topic.label,
+                    maxLines = 1,
+                )
+            }
         }
     }
 }
