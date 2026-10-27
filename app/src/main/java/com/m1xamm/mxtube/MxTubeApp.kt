@@ -40,6 +40,7 @@ import com.m1xamm.mxtube.ui.nav.SectionPlaceholder
 import com.m1xamm.mxtube.ui.player.PlayerScreen
 import com.m1xamm.mxtube.ui.search.SearchScreen
 import com.m1xamm.mxtube.ui.search.SearchViewModel
+import com.m1xamm.mxtube.ui.settings.SettingsScreen
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.launch
@@ -51,6 +52,7 @@ fun MxTubeApp() {
     var playerRelated by remember { mutableStateOf<List<VideoSummary>>(emptyList()) }
     var selectedTab by rememberSaveable { mutableStateOf(MainTab.Home) }
     var isSearchActive by remember { mutableStateOf(false) }
+    var playerFullscreen by rememberSaveable { mutableStateOf(false) }
     val navHazeState = rememberHazeState()
     val context = LocalContext.current
     val application = context.applicationContext as MxTubeApplication
@@ -87,11 +89,14 @@ fun MxTubeApp() {
                                 homeViewModel.onWatchRecorded()
                             }
                             playerRelated = related.filter { it.url != video.url }.take(8)
+                            playerFullscreen = false
                             shownVideo = video
                             selectedVideo = video
                         },
                         onSearchActiveChange = { isSearchActive = it },
                     )
+
+                MainTab.Settings -> SettingsScreen()
 
                 else -> SectionPlaceholder(tab = selectedTab)
             }
@@ -156,14 +161,14 @@ fun MxTubeApp() {
                                 )
                                 homeViewModel.onWatchRecorded()
                             }
-                            playerRelated =
-                                playerRelated.filter { it.url != next.url }.take(8)
+                            playerRelated = emptyList()
                             shownVideo = next
                             selectedVideo = next
                         },
                         onBack = {
                             PlaybackHolder.stop()
                             PlaybackService.stop(context)
+                            playerFullscreen = false
                             selectedVideo = null
                             homeViewModel.onHomeVisible()
                         },
@@ -172,6 +177,8 @@ fun MxTubeApp() {
                                 historyStore.updateWatchProgress(video.url, positionMs)
                             }
                         },
+                        startFullscreen = playerFullscreen,
+                        onFullscreenChanged = { playerFullscreen = it },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }

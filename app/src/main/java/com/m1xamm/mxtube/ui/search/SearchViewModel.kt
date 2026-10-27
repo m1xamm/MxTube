@@ -9,6 +9,7 @@ import com.m1xamm.mxtube.data.youtube.VideoSummary
 import com.m1xamm.mxtube.data.youtube.YouTubeRepository
 import com.m1xamm.mxtube.data.youtube.YouTubeSearchSession
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class SearchPhase {
     Idle,
@@ -80,7 +82,7 @@ class SearchViewModel(
         searchJob =
             viewModelScope.launch {
                 try {
-                    val newSession = repository.search(trimmed)
+                    val newSession = withContext(Dispatchers.IO) { repository.search(trimmed) }
                     val batch = newSession.first()
                     if (lastQuery != trimmed) return@launch
 

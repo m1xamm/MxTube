@@ -121,6 +121,12 @@ object HomeFeedEngine {
         } else {
             candidates[video.url] =
                 existing.copy(
+                    video =
+                        if (video.viewCount > existing.video.viewCount) {
+                            video
+                        } else {
+                            existing.video
+                        },
                     topics = existing.topics + topics,
                     score = maxOf(existing.score, score),
                 )

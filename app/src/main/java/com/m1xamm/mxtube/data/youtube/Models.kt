@@ -53,4 +53,5 @@ data class PlaybackInfo(
     val audioTracks: List<PlaybackAudioTrack>,
     val defaultAudioTrackIndex: Int,
     val subtitles: List<PlaybackSubtitle>,
+    val related: List<VideoSummary> = emptyList(),
 )

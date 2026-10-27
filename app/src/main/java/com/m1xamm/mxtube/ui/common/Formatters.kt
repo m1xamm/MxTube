@@ -1,6 +1,8 @@
 package com.m1xamm.mxtube.ui.common
 
+import android.icu.text.CompactDecimalFormat
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.m1xamm.mxtube.R
@@ -23,18 +25,17 @@ fun formatTime(totalSeconds: Long): String {
 
 fun formatDuration(seconds: Long): String = if (seconds > 0) formatTime(seconds) else ""
 
+@Composable
 fun compactCount(count: Long): String {
     if (count < 1_000) return count.toString()
 
-    val value =
-        when {
-            count >= 1_000_000_000 -> count / 1_000_000_000.0 to "млрд"
-            count >= 1_000_000 -> count / 1_000_000.0 to "млн"
-            else -> count / 1_000.0 to "тыс."
-        }
-
-    val number = String.format(Locale.forLanguageTag("ru"), "%.1f", value.first).removeSuffix(",0")
-    return "$number ${value.second}"
+    val formatter =
+        CompactDecimalFormat.getInstance(
+            LocalConfiguration.current.locales[0],
+            CompactDecimalFormat.CompactStyle.SHORT,
+        )
+    formatter.maximumFractionDigits = 1
+    return formatter.format(count)
 }
 
 @Composable
@@ -47,11 +48,17 @@ fun viewsText(count: Long): String {
     }
 }
 
+@Composable
 fun formatSpeed(speed: Float): String {
-    val formatter = DecimalFormat("0.##", DecimalFormatSymbols(Locale.forLanguageTag("ru")))
+    val formatter =
+        DecimalFormat(
+            "0.##",
+            DecimalFormatSymbols(LocalConfiguration.current.locales[0]),
+        )
     return "${formatter.format(speed)}×"
 }
 
+@Composable
 fun formatRelativeDate(epochMillis: Long): String {
     val elapsedMillis = System.currentTimeMillis() - epochMillis
     if (elapsedMillis < 0) return ""
@@ -61,12 +68,12 @@ fun formatRelativeDate(epochMillis: Long): String {
     val days = elapsedMillis / 86_400_000
 
     return when {
-        minutes < 1 -> "только что"
-        minutes < 60 -> "$minutes мин. назад"
-        hours < 24 -> "$hours ч. назад"
-        days < 7 -> "$days дн. назад"
-        days < 30 -> "${days / 7} нед. назад"
-        days < 365 -> "${days / 30} мес. назад"
-        else -> "${days / 365} г. назад"
+        minutes < 1 -> stringResource(R.string.relative_just_now)
+        minutes < 60 -> stringResource(R.string.relative_minutes, minutes)
+        hours < 24 -> stringResource(R.string.relative_hours, hours)
+        days < 7 -> stringResource(R.string.relative_days, days)
+        days < 30 -> stringResource(R.string.relative_weeks, days / 7)
+        days < 365 -> stringResource(R.string.relative_months, days / 30)
+        else -> stringResource(R.string.relative_years, days / 365)
     }
 }

@@ -11,8 +11,10 @@ import com.m1xamm.mxtube.data.home.HomeTopics
 import com.m1xamm.mxtube.data.local.HistoryState
 import com.m1xamm.mxtube.data.local.HomeFeedCache
 import com.m1xamm.mxtube.data.local.LocalHistoryStore
+import com.m1xamm.mxtube.data.local.UserPreferences
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -51,23 +53,35 @@ class HomeViewModel(
 
     init {
         viewModelScope.launch {
-            val cachedItems = feedCache.read()
-            if (cachedItems.isNotEmpty()) {
-                _uiState.update { it.copy(items = cachedItems, isLoading = false) }
-            }
+            val cachedFeed = feedCache.read()
 
             var initial = historyStore.snapshot()
             latestHistory = initial
             lastTopWatchUrl = initial.watches.firstOrNull()?.url
             val topics = HomeTopics.ordered(initial)
-            val selected = HomeTopics.all.id
+            val selected =
+                UserPreferences.homeTopicId
+                    ?.takeIf { id -> topics.any { it.id == id } }
+                    ?: HomeTopics.all.id
+            val cachedForAll = if (selected == HomeTopics.all.id) cachedFeed else null
+            val freshCache =
+                cachedForAll != null &&
+                    System.currentTimeMillis() - cachedForAll.savedAt < CACHE_FRESH_MS
+            if (cachedForAll != null) {
+                _uiState.update { it.copy(items = cachedForAll.items, isLoading = false) }
+            }
             _uiState.update {
                 it.copy(
                     topics = topics,
                     selectedTopicId = selected,
                 )
             }
-            loadTopic(HomeTopics.all, initial, force = true)
+            if (freshCache) delay(CACHE_REFRESH_DELAY_MS)
+            loadTopic(
+                topics.firstOrNull { it.id == selected } ?: HomeTopics.all,
+                initial,
+                force = true,
+            )
 
             historyStore.state.collect { history ->
                 if (history == initial) return@collect
@@ -105,6 +119,7 @@ class HomeViewModel(
         val state = _uiState.value
         if (state.selectedTopicId == id) return
         val topic = state.topics.firstOrNull { it.id == id } ?: return
+        UserPreferences.homeTopicId = id
         val cached = cache[id]
         val stalePersonalized =
             topic.kind == HomeTopicKind.Personalized && personalizedStale
@@ -337,5 +352,7 @@ class HomeViewModel(
         const val FEED_TIMEOUT_MS = 35_000L
         const val PERSONALIZED_TTL_MS = 2 * 60_000L
         const val TOPIC_TTL_MS = 15 * 60_000L
+        const val CACHE_FRESH_MS = 10 * 60_000L
+        const val CACHE_REFRESH_DELAY_MS = 1_500L
     }
 }

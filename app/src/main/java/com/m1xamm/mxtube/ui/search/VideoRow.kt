@@ -56,7 +56,8 @@ fun VideoRow(
     val duration = formatDuration(video.durationSeconds)
     val channel = video.uploader.ifBlank { stringResource(R.string.unknown_channel) }
     val views = if (video.viewCount >= 0) compactCount(video.viewCount) else ""
-    val uploaded = video.uploadedAtEpochMillis?.let(::formatRelativeDate).orEmpty()
+    val uploaded =
+        video.uploadedAtEpochMillis?.let { epoch -> formatRelativeDate(epoch) }.orEmpty()
     val meta =
         listOfNotNull(
             views.takeIf { it.isNotBlank() },

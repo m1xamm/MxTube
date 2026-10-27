@@ -75,7 +75,7 @@ fun MxBottomNav(
         )
     val endEdgePadding by
         animateDpAsState(
-            targetValue = if (selected == MainTab.Profile) 0.dp else BarEndPadding,
+            targetValue = if (selected == MainTab.Settings) 0.dp else BarEndPadding,
             animationSpec = tween(SpatialMillis, easing = FastOutSlowInEasing),
             label = "nav-end-edge",
         )

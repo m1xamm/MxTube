@@ -11,5 +11,5 @@ enum class MainTab(
     Home(R.string.nav_home, R.drawable.ic_nav_home),
     Shorts(R.string.nav_shorts, R.drawable.ic_nav_shorts),
     Subscriptions(R.string.nav_subscriptions, R.drawable.ic_nav_subscriptions),
-    Profile(R.string.nav_profile, R.drawable.ic_nav_profile),
+    Settings(R.string.nav_settings, R.drawable.ic_nav_settings),
 }

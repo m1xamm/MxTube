@@ -1,111 +1,169 @@
 package com.m1xamm.mxtube.data.home
 
+import android.content.Context
+import com.m1xamm.mxtube.R
 import com.m1xamm.mxtube.data.local.HistoryState
 import java.util.Locale
 
 object HomeTopics {
-    val all =
-        HomeTopic(
-            id = "all",
-            label = "Все",
-            kind = HomeTopicKind.Personalized,
-        )
-
-    val base: List<HomeTopic> =
+    private val BASE_DEFS =
         listOf(
-            HomeTopic(
+            BaseTopicDef(
                 id = "music",
-                label = "Музыка",
+                labelRes = R.string.topic_music,
                 kind = HomeTopicKind.Kiosk,
                 kioskId = "trending_music",
-                keywords = listOf("музыка", "music", "песня", "song", "album", "artist", "клип"),
+                keywords =
+                    listOf(
+                        "музыка", "музика", "music", "песня", "пісня", "song", "album",
+                        "artist", "клип", "кліп", "гурт",
+                    ),
             ),
-            HomeTopic(
+            BaseTopicDef(
                 id = "gaming",
-                label = "Игры",
+                labelRes = R.string.topic_gaming,
                 kind = HomeTopicKind.Kiosk,
                 kioskId = "trending_gaming",
                 keywords =
                     listOf(
-                        "игр", "game", "gaming", "gameplay", "прохожд", "стрим", "minecraft",
-                        "roblox", "fortnite", "dota", "cs2", "gta",
+                        "игр", "гра", "ігор", "game", "gaming", "gameplay", "прохожд",
+                        "проходж", "стрим", "стрім", "minecraft", "roblox", "fortnite",
+                        "dota", "cs2", "gta",
                     ),
             ),
-            HomeTopic(
+            BaseTopicDef(
                 id = "movies",
-                label = "Фильмы",
+                labelRes = R.string.topic_movies,
                 kind = HomeTopicKind.Kiosk,
                 kioskId = "trending_movies_and_shows",
                 keywords =
-                    listOf("фильм", "кино", "movie", "trailer", "трейлер", "сериал", "cinema"),
+                    listOf(
+                        "фильм", "фільм", "кино", "кіно", "movie", "trailer", "трейлер",
+                        "сериал", "серіал", "cinema",
+                    ),
             ),
-            HomeTopic(
+            BaseTopicDef(
                 id = "news",
-                label = "Новости",
+                labelRes = R.string.topic_news,
                 kind = HomeTopicKind.Search,
-                query = "новости",
-                keywords = listOf("новост", "news", "событ"),
+                queryRes = R.string.topic_query_news,
+                keywords = listOf("новост", "новини", "новина", "news", "событ", "події"),
             ),
-            HomeTopic(
+            BaseTopicDef(
                 id = "sport",
-                label = "Спорт",
+                labelRes = R.string.topic_sport,
                 kind = HomeTopicKind.Search,
-                query = "спорт",
+                queryRes = R.string.topic_query_sport,
                 keywords =
                     listOf(
-                        "спорт", "sport", "футбол", "хоккей", "матч", "бокс", "ufc", "nba", "nhl",
+                        "спорт", "sport", "футбол", "хоккей", "хокей", "матч", "бокс", "ufc",
+                        "nba", "nhl",
                     ),
             ),
-            HomeTopic(
+            BaseTopicDef(
                 id = "science",
-                label = "Наука",
+                labelRes = R.string.topic_science,
                 kind = HomeTopicKind.Search,
-                query = "наука",
-                keywords =
-                    listOf("наук", "science", "космос", "space", "исследован", "физик", "биолог"),
-            ),
-            HomeTopic(
-                id = "tech",
-                label = "Технологии",
-                kind = HomeTopicKind.Search,
-                query = "технологии",
+                queryRes = R.string.topic_query_science,
                 keywords =
                     listOf(
-                        "технолог", "tech", "обзор", "review", "смартфон", "iphone", "android",
-                        "гаджет",
+                        "наук", "наука", "science", "космос", "space", "исследован", "дослідж",
+                        "физик", "фізик", "биолог", "біолог",
                     ),
             ),
-            HomeTopic(
-                id = "auto",
-                label = "Авто",
+            BaseTopicDef(
+                id = "tech",
+                labelRes = R.string.topic_tech,
                 kind = HomeTopicKind.Search,
-                query = "авто",
+                queryRes = R.string.topic_query_tech,
+                keywords =
+                    listOf(
+                        "технолог", "tech", "обзор", "огляд", "review", "смартфон", "iphone",
+                        "android", "гаджет", "ґаджет",
+                    ),
+            ),
+            BaseTopicDef(
+                id = "auto",
+                labelRes = R.string.topic_auto,
+                kind = HomeTopicKind.Search,
+                queryRes = R.string.topic_query_auto,
                 keywords = listOf("авто", "car", "машин", "drive", "tuning", "мото"),
             ),
-            HomeTopic(
+            BaseTopicDef(
                 id = "travel",
-                label = "Путешествия",
+                labelRes = R.string.topic_travel,
                 kind = HomeTopicKind.Search,
-                query = "путешествия",
-                keywords = listOf("путешеств", "travel", "тур", "trip", "отдых"),
+                queryRes = R.string.topic_query_travel,
+                keywords =
+                    listOf(
+                        "путешеств", "подорож", "travel", "тур", "trip", "отдых", "відпочинок",
+                    ),
             ),
         )
-
-    private val baseById = base.associateBy { it.id }
-    private val baseLabels = (base.map { it.label } + all.label).map { it.lowercase(Locale.ROOT) }
-    private val baseQueries = base.mapNotNull { it.query?.lowercase(Locale.ROOT) }.toSet()
 
     private val blockedWords =
         setOf(
             "порно", "секс", "интим", "наркот", "суицид", "диагноз", "болезн", "зарплат",
-            "пароль", "логин", "почта", "паспорт", "адрес",
+            "пароль", "логин", "почта", "паспорт", "адрес", "porn", "sex", "suicide",
+            "password", "login", "email", "passport", "address", "суїцид", "логін",
+            "пошта", "адреса",
         )
+
     private val questionWords =
         setOf(
             "как", "почему", "зачем", "что", "где", "когда", "кто", "сколько", "можно",
-            "стоит", "лучше", "какой", "какая", "какие",
+            "стоит", "лучше", "какой", "какая", "какие", "how", "why", "what", "where",
+            "when", "who", "much", "should", "best", "which", "як", "чому", "навіщо", "що",
+            "де", "коли", "хто", "скільки", "можна", "варто", "краще", "який", "яка", "які",
         )
-    private val selfWords = setOf("я", "мне", "меня", "мой", "моя", "мое", "мои", "себя")
+
+    private val selfWords =
+        setOf(
+            "я", "мне", "меня", "мой", "моя", "мое", "мои", "себя", "i", "me", "my", "mine",
+            "myself", "мені", "мене", "мій", "моя", "моє", "мої", "себе",
+        )
+
+    var all: HomeTopic =
+        HomeTopic(
+            id = "all",
+            label = "All",
+            kind = HomeTopicKind.Personalized,
+        )
+        private set
+
+    var base: List<HomeTopic> = BASE_DEFS.map { it.fallbackTopic() }
+        private set
+
+    var discoveryQuery: String = "popular"
+        private set
+
+    private var baseById = base.associateBy { it.id }
+    private var baseLabels = labelsOf(all, base)
+    private var baseQueries = queriesOf(base)
+
+    fun init(context: Context) {
+        all =
+            HomeTopic(
+                id = "all",
+                label = context.getString(R.string.topic_all),
+                kind = HomeTopicKind.Personalized,
+            )
+        base =
+            BASE_DEFS.map { def ->
+                HomeTopic(
+                    id = def.id,
+                    label = context.getString(def.labelRes),
+                    kind = def.kind,
+                    kioskId = def.kioskId,
+                    query = def.queryRes?.let(context::getString),
+                    keywords = def.keywords,
+                )
+            }
+        baseById = base.associateBy { it.id }
+        baseLabels = labelsOf(all, base)
+        baseQueries = queriesOf(base)
+        discoveryQuery = context.getString(R.string.home_discovery_query)
+    }
 
     fun ordered(history: HistoryState): List<HomeTopic> {
         val baseScores = baseScores(history)
@@ -237,6 +295,14 @@ object HomeTopics {
     private fun normalize(value: String): String =
         value.trim().lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
 
+    private fun labelsOf(
+        all: HomeTopic,
+        base: List<HomeTopic>,
+    ): Set<String> = (base.map { it.label } + all.label).map { it.lowercase(Locale.ROOT) }.toSet()
+
+    private fun queriesOf(base: List<HomeTopic>): Set<String> =
+        base.mapNotNull { it.query?.lowercase(Locale.ROOT) }.toSet()
+
     private data class ScoredTopic(
         val topic: HomeTopic,
         val score: Float,
@@ -248,6 +314,24 @@ object HomeTopics {
         val score: Float,
         val index: Int,
     )
+
+    private data class BaseTopicDef(
+        val id: String,
+        val labelRes: Int,
+        val kind: HomeTopicKind,
+        val kioskId: String? = null,
+        val queryRes: Int? = null,
+        val keywords: List<String>,
+    ) {
+        fun fallbackTopic(): HomeTopic =
+            HomeTopic(
+                id = id,
+                label = id,
+                kind = kind,
+                kioskId = kioskId,
+                keywords = keywords,
+            )
+    }
 
     private const val MAX_DYNAMIC_TOPICS = 8
 }

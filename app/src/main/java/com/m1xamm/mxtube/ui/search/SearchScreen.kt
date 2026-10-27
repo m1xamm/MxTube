@@ -13,10 +13,10 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -60,6 +60,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -82,6 +84,7 @@ import com.m1xamm.mxtube.ui.common.clusterCardColor
 import com.m1xamm.mxtube.ui.common.clusterInnerColor
 import com.m1xamm.mxtube.ui.home.HomeFeed
 import com.m1xamm.mxtube.ui.home.HomeViewModel
+import kotlinx.coroutines.delay
 
 @Composable
 fun SearchScreen(
@@ -140,6 +143,7 @@ fun SearchScreen(
         SearchHeader(
             input = state.input,
             isLoading = state.phase == SearchPhase.Loading,
+            active = state.isSearchActive,
             onInputChange = viewModel::onQueryChange,
             onFocused = viewModel::activateSearch,
             onClear = viewModel::clear,
@@ -514,6 +518,7 @@ private fun SearchHistoryRow(
 private fun SearchHeader(
     input: String,
     isLoading: Boolean,
+    active: Boolean,
     onInputChange: (String) -> Unit,
     onFocused: () -> Unit,
     onClear: () -> Unit,
@@ -531,13 +536,18 @@ private fun SearchHeader(
         Spacer(Modifier.width(10.dp))
 
         val interactionSource = remember { MutableInteractionSource() }
-        val focused by interactionSource.collectIsFocusedAsState()
-        LaunchedEffect(focused) {
-            if (focused) onFocused()
+        val focusRequester = remember { FocusRequester() }
+        val keyboard = LocalSoftwareKeyboardController.current
+        LaunchedEffect(active) {
+            if (active) {
+                delay(60)
+                runCatching { focusRequester.requestFocus() }
+                keyboard?.show()
+            }
         }
         val clusterCorner by
             animateDpAsState(
-                targetValue = if (focused) 20.dp else 28.dp,
+                targetValue = if (active) 20.dp else 28.dp,
                 animationSpec =
                     spring(
                         dampingRatio = Spring.DampingRatioNoBouncy,
@@ -548,7 +558,7 @@ private fun SearchHeader(
         val clusterColor by
             animateColorAsState(
                 targetValue =
-                    if (focused) {
+                    if (active) {
                         MaterialTheme.colorScheme.surfaceContainerHighest
                     } else {
                         MaterialTheme.colorScheme.surfaceContainerHigh
@@ -558,7 +568,7 @@ private fun SearchHeader(
             )
         val buttonCorner by
             animateDpAsState(
-                targetValue = if (focused) 16.dp else 24.dp,
+                targetValue = if (active) 16.dp else 24.dp,
                 animationSpec =
                     spring(
                         dampingRatio = Spring.DampingRatioNoBouncy,
@@ -591,43 +601,62 @@ private fun SearchHeader(
                         .padding(end = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextField(
-                    value = input,
-                    onValueChange = onInputChange,
-                    modifier =
-                        Modifier
-                            .weight(1f)
-                            .height(56.dp),
-                    placeholder = {
-                        Text(stringResource(R.string.search_hint))
-                    },
-                    trailingIcon = {
-                        if (input.isNotEmpty()) {
-                            IconButton(onClick = onClear) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_close_rounded),
-                                    contentDescription = stringResource(R.string.search_clear),
-                                )
+                if (active) {
+                    TextField(
+                        value = input,
+                        onValueChange = onInputChange,
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .height(56.dp)
+                                .focusRequester(focusRequester),
+                        placeholder = {
+                            Text(stringResource(R.string.search_hint))
+                        },
+                        trailingIcon = {
+                            if (input.isNotEmpty()) {
+                                IconButton(onClick = onClear) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_close_rounded),
+                                        contentDescription = stringResource(R.string.search_clear),
+                                    )
+                                }
                             }
-                        }
-                    },
-                    singleLine = true,
-                    shape = CircleShape,
-                    textStyle = MaterialTheme.typography.bodyLarge,
-                    interactionSource = interactionSource,
-                    colors =
-                        TextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            disabledContainerColor = Color.Transparent,
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent,
-                            disabledIndicatorColor = Color.Transparent,
-                            cursorColor = MaterialTheme.colorScheme.primary,
-                        ),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { onSearch() }),
-                )
+                        },
+                        singleLine = true,
+                        shape = CircleShape,
+                        textStyle = MaterialTheme.typography.bodyLarge,
+                        interactionSource = interactionSource,
+                        colors =
+                            TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                disabledContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent,
+                                disabledIndicatorColor = Color.Transparent,
+                                cursorColor = MaterialTheme.colorScheme.primary,
+                            ),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(onSearch = { onSearch() }),
+                    )
+                } else {
+                    Box(
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .height(56.dp)
+                                .clickable(onClick = onFocused)
+                                .padding(start = 20.dp),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.search_hint),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
 
                 FilledIconButton(
                     onClick = onSearch,

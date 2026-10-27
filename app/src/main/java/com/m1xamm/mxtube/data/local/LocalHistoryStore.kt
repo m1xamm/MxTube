@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -33,9 +34,11 @@ class LocalHistoryStore(context: Context) {
     }
 
     suspend fun snapshot(): HistoryState =
-        mutex.withLock {
-            ensureLoaded()
-            _state.value
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                ensureLoaded()
+                _state.value
+            }
         }
 
     suspend fun recordWatch(
@@ -117,20 +120,24 @@ class LocalHistoryStore(context: Context) {
     }
 
     suspend fun clearAll() {
-        mutex.withLock {
-            ensureLoaded()
-            _state.value = HistoryState()
-            file.delete()
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                ensureLoaded()
+                _state.value = HistoryState()
+                file.delete()
+            }
         }
     }
 
     private suspend fun mutate(block: (HistoryState) -> HistoryState) {
-        mutex.withLock {
-            ensureLoaded()
-            val next = block(_state.value)
-            if (next == _state.value) return
-            _state.value = next
-            write(next)
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                ensureLoaded()
+                val next = block(_state.value)
+                if (next == _state.value) return@withLock
+                _state.value = next
+                write(next)
+            }
         }
     }
 

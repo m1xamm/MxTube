@@ -36,12 +36,7 @@ fun SectionPlaceholder(
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text =
-                if (tab == MainTab.Profile) {
-                    stringResource(R.string.profile_placeholder)
-                } else {
-                    stringResource(R.string.section_soon)
-                },
+            text = stringResource(R.string.section_soon),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

@@ -15,6 +15,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -22,21 +23,27 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -45,8 +52,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -56,10 +67,12 @@ import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -75,12 +88,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
@@ -98,7 +115,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
@@ -106,15 +123,21 @@ import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
+import coil3.compose.AsyncImage
 import com.m1xamm.mxtube.R
+import com.m1xamm.mxtube.data.network.NetworkManager
 import com.m1xamm.mxtube.data.youtube.PlaybackAudioTrack
+import com.m1xamm.mxtube.data.local.UserPreferences
 import com.m1xamm.mxtube.data.youtube.PlaybackInfo
 import com.m1xamm.mxtube.data.youtube.PlaybackQuality
 import com.m1xamm.mxtube.data.youtube.PlaybackSubtitle
 import com.m1xamm.mxtube.data.youtube.VideoSummary
 import com.m1xamm.mxtube.playback.PlaybackHolder
 import com.m1xamm.mxtube.playback.PlaybackService
+import com.m1xamm.mxtube.ui.common.clusterInnerColor
 import com.m1xamm.mxtube.ui.common.findActivity
+import com.m1xamm.mxtube.ui.common.compactCount
+import com.m1xamm.mxtube.ui.common.formatDuration
 import com.m1xamm.mxtube.ui.common.formatRelativeDate
 import com.m1xamm.mxtube.ui.common.formatTime
 import com.m1xamm.mxtube.ui.common.viewsText
@@ -141,22 +164,33 @@ fun PlayerScreen(
     onRelatedClick: (VideoSummary) -> Unit,
     onBack: () -> Unit,
     onWatchProgress: (Long) -> Unit = {},
+    startFullscreen: Boolean = false,
+    onFullscreenChanged: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
-    viewModel: PlayerViewModel = viewModel(key = video.url) { PlayerViewModel(video.url) },
+    viewModel: PlayerViewModel =
+        viewModel(key = video.url) {
+            PlayerViewModel(video.url, initialRelated = related)
+        },
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val info = state.info
     val hazeState = rememberHazeState()
+    val settingsHazeState = rememberHazeState()
     val selectedSubtitle = info?.subtitles?.getOrNull(state.selectedSubtitleIndex)
     val currentSubtitle = rememberUpdatedState(selectedSubtitle)
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
     val darkTheme = isSystemInDarkTheme()
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
     val notificationPermission =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     val exoPlayer = remember(context) { PlaybackHolder.player(context) }
 
-    var isFullscreen by rememberSaveable { mutableStateOf(false) }
+    var isFullscreen by rememberSaveable { mutableStateOf(startFullscreen) }
+    var relatedOverlayOpen by rememberSaveable { mutableStateOf(false) }
+    var hasEnteredFullscreen by remember { mutableStateOf(isFullscreen) }
+    var ended by remember { mutableStateOf(false) }
     var controlsVisible by remember { mutableStateOf(true) }
     var isPlaying by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(false) }
@@ -164,7 +198,7 @@ fun PlayerScreen(
     var positionMs by remember { mutableLongStateOf(0L) }
     var bufferedMs by remember { mutableLongStateOf(0L) }
     var isDragging by remember { mutableStateOf(false) }
-    var speed by rememberSaveable { mutableFloatStateOf(1f) }
+    var speed by rememberSaveable { mutableFloatStateOf(UserPreferences.playbackSpeed) }
     var settingsOpen by remember { mutableStateOf(false) }
     var playbackError by remember { mutableStateOf(false) }
     var reloadToken by remember { mutableIntStateOf(0) }
@@ -173,6 +207,9 @@ fun PlayerScreen(
     val handleBack: () -> Unit = {
         if (settingsOpen) {
             settingsOpen = false
+        } else if (relatedOverlayOpen) {
+            relatedOverlayOpen = false
+            controlsVisible = true
         } else if (isFullscreen) {
             isFullscreen = false
         } else {
@@ -183,6 +220,10 @@ fun PlayerScreen(
     }
 
     BackHandler { handleBack() }
+
+    LaunchedEffect(isFullscreen) {
+        onFullscreenChanged(isFullscreen)
+    }
 
     val progressReporter = rememberUpdatedState(onWatchProgress)
     DisposableEffect(exoPlayer) {
@@ -205,6 +246,11 @@ fun PlayerScreen(
         }
     }
 
+    LaunchedEffect(Unit) {
+        keyboard?.hide()
+        focusManager.clearFocus(force = true)
+    }
+
     LaunchedEffect(exoPlayer) {
         isPlaying = exoPlayer.isPlaying
         isBuffering = exoPlayer.playbackState == Player.STATE_BUFFERING
@@ -217,6 +263,7 @@ fun PlayerScreen(
             object : Player.Listener {
                 override fun onIsPlayingChanged(playing: Boolean) {
                     isPlaying = playing
+                    if (playing) ended = false
                 }
 
                 override fun onPlaybackStateChanged(playbackState: Int) {
@@ -228,6 +275,7 @@ fun PlayerScreen(
                     }
                     if (playbackState == Player.STATE_ENDED) {
                         controlsVisible = true
+                        ended = true
                     }
                 }
 
@@ -283,23 +331,39 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(controlsVisible, isPlaying, isDragging, settingsOpen) {
+    LaunchedEffect(controlsVisible, isPlaying, isDragging, settingsOpen, relatedOverlayOpen) {
         if (controlsVisible && isPlaying && !isDragging && !settingsOpen) {
             delay(3000)
             controlsVisible = false
         }
     }
 
+    LaunchedEffect(ended, isFullscreen) {
+        if (ended && isFullscreen) {
+            relatedOverlayOpen = true
+            controlsVisible = true
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (!isFullscreen) {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+    }
+
     LaunchedEffect(isFullscreen) {
         val currentActivity = activity ?: return@LaunchedEffect
         if (isFullscreen) {
+            hasEnteredFullscreen = true
             currentActivity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             WindowCompat.getInsetsController(currentActivity.window, currentActivity.window.decorView).apply {
                 hide(WindowInsetsCompat.Type.systemBars())
                 systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             }
         } else {
-            currentActivity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            if (hasEnteredFullscreen) {
+                currentActivity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            }
             WindowCompat.getInsetsController(currentActivity.window, currentActivity.window.decorView).show(
                 WindowInsetsCompat.Type.systemBars(),
             )
@@ -333,6 +397,7 @@ fun PlayerScreen(
 
     val toggleFullscreen = {
         isFullscreen = !isFullscreen
+        relatedOverlayOpen = false
         controlsVisible = true
     }
     val onSeek: (Long) -> Unit = { ms ->
@@ -348,7 +413,11 @@ fun PlayerScreen(
         if (exoPlayer.isPlaying) {
             exoPlayer.pause()
         } else {
-            if (exoPlayer.playbackState == Player.STATE_ENDED) exoPlayer.seekTo(0)
+            if (exoPlayer.playbackState == Player.STATE_ENDED) {
+                exoPlayer.seekTo(0)
+                ended = false
+                relatedOverlayOpen = false
+            }
             exoPlayer.play()
         }
     }
@@ -361,7 +430,7 @@ fun PlayerScreen(
         state.error -> {
             PlayerOpenErrorScreen(
                 video = video,
-                related = related,
+                related = state.related,
                 onBack = handleBack,
                 onRelatedClick = onRelatedClick,
                 onRetry = viewModel::load,
@@ -372,7 +441,7 @@ fun PlayerScreen(
         state.isLoading || info == null -> {
             PlayerLoadingScreen(
                 video = video,
-                related = related,
+                related = state.related,
                 onBack = handleBack,
                 onRelatedClick = onRelatedClick,
                 modifier = modifier,
@@ -381,35 +450,57 @@ fun PlayerScreen(
 
         else -> {
             Box(modifier = modifier.fillMaxSize()) {
-                Box(modifier = Modifier.fillMaxSize()) {
+                Box(modifier = Modifier.fillMaxSize().hazeSource(settingsHazeState)) {
                     if (isFullscreen) {
-                        PlayerStage(
-                            exoPlayer = exoPlayer,
-                            hazeState = hazeState,
-                            title = info.title.ifBlank { video.title },
-                            isFullscreen = true,
-                            onBack = handleBack,
-                            onToggleFullscreen = toggleFullscreen,
-                            onOpenSettings = onOpenSettings,
-                            controlsVisible = controlsVisible && !settingsOpen,
-                            onToggleControls = { controlsVisible = !controlsVisible },
-                            onHideControls = { controlsVisible = false },
-                            isPlaying = isPlaying,
-                            isBuffering = isBuffering,
-                            playbackError = playbackError,
-                            onRetry = {
-                                playbackError = false
-                                reloadToken++
-                            },
-                            positionMs = positionMs,
-                            durationMs = durationMs,
-                            bufferedMs = bufferedMs,
-                            isDragging = isDragging,
-                            onSeek = onSeek,
-                            onDraggingChanged = onDraggingChanged,
-                            onPlayPause = onPlayPause,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                        Box(Modifier.fillMaxSize()) {
+                            PlayerStage(
+                                exoPlayer = exoPlayer,
+                                hazeState = hazeState,
+                                title = info.title.ifBlank { video.title },
+                                isFullscreen = true,
+                                onBack = handleBack,
+                                onToggleFullscreen = toggleFullscreen,
+                                onOpenSettings = onOpenSettings,
+                                relatedVisible = relatedOverlayOpen,
+                                onRelatedVisibilityChanged = { visible ->
+                                    relatedOverlayOpen = visible
+                                    controlsVisible = true
+                                },
+                                relatedContent = {
+                                    FullscreenRelatedVideos(
+                                        related = state.related,
+                                        isLoading = state.isLoadingRelated,
+                                        hasMore = state.hasMoreRelated,
+                                        error = state.relatedError,
+                                        onLoadMore = viewModel::loadMoreRelated,
+                                        onRetry = viewModel::retryRelated,
+                                        onVideoClick = { next ->
+                                            relatedOverlayOpen = false
+                                            onRelatedClick(next)
+                                        },
+                                        hazeState = hazeState,
+                                    )
+                                },
+                                controlsVisible = controlsVisible && !settingsOpen,
+                                onToggleControls = { controlsVisible = !controlsVisible },
+                                onHideControls = { controlsVisible = false },
+                                isPlaying = isPlaying,
+                                isBuffering = isBuffering,
+                                playbackError = playbackError,
+                                onRetry = {
+                                    playbackError = false
+                                    reloadToken++
+                                },
+                                positionMs = positionMs,
+                                durationMs = durationMs,
+                                bufferedMs = bufferedMs,
+                                isDragging = isDragging,
+                                onSeek = onSeek,
+                                onDraggingChanged = onDraggingChanged,
+                                onPlayPause = onPlayPause,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     } else {
                         Column(
                             modifier =
@@ -453,7 +544,7 @@ fun PlayerScreen(
                             PlayerDetails(
                                 video = video,
                                 info = info,
-                                related = related,
+                                related = state.related,
                                 onRelatedClick = onRelatedClick,
                                 modifier = Modifier.weight(1f),
                             )
@@ -468,12 +559,14 @@ fun PlayerScreen(
                         selectedAudioTrackIndex = state.selectedAudioTrackIndex,
                         selectedSubtitleIndex = state.selectedSubtitleIndex,
                         speed = speed,
+                        hazeState = settingsHazeState,
                         onDismiss = { settingsOpen = false },
                         onQualitySelected = viewModel::selectQuality,
                         onAudioTrackSelected = viewModel::selectAudioTrack,
                         onSubtitleSelected = viewModel::selectSubtitle,
                         onSpeedSelected = { value ->
                             speed = value
+                            UserPreferences.playbackSpeed = value
                             exoPlayer.setPlaybackSpeed(value)
                         },
                     )
@@ -492,6 +585,9 @@ private fun PlayerStage(
     onBack: () -> Unit,
     onToggleFullscreen: () -> Unit,
     onOpenSettings: () -> Unit,
+    relatedVisible: Boolean = false,
+    onRelatedVisibilityChanged: ((Boolean) -> Unit)? = null,
+    relatedContent: (@Composable () -> Unit)? = null,
     controlsVisible: Boolean,
     onToggleControls: () -> Unit,
     onHideControls: () -> Unit,
@@ -554,11 +650,41 @@ private fun PlayerStage(
         }
     }
 
-    Box(
+    val relatedVisibilityChanged = rememberUpdatedState(onRelatedVisibilityChanged)
+    BoxWithConstraints(
         modifier =
             modifier
-                .background(Color.Black),
+                .background(Color.Black)
+                .then(
+                    if (onRelatedVisibilityChanged != null) {
+                        Modifier.pointerInput(Unit) {
+                            var dragDistance = 0f
+                            detectVerticalDragGestures(
+                                onDragStart = { dragDistance = 0f },
+                                onVerticalDrag = { change, dragAmount ->
+                                    dragDistance += dragAmount
+                                    change.consume()
+                                },
+                                onDragEnd = {
+                                    if (dragDistance < -48.dp.toPx()) {
+                                        relatedVisibilityChanged.value?.invoke(true)
+                                    } else if (dragDistance > 48.dp.toPx()) {
+                                        relatedVisibilityChanged.value?.invoke(false)
+                                    }
+                                },
+                            )
+                        }
+                    } else {
+                        Modifier
+                    },
+                ),
     ) {
+        val relatedHeight = minOf(208.dp, maxHeight * 0.55f)
+        val controlsBottomInset by animateDpAsState(
+            targetValue = if (relatedVisible) relatedHeight else 0.dp,
+            animationSpec = tween(300),
+            label = "related-controls-inset",
+        )
         AndroidView(
             factory = { context ->
                 (LayoutInflater.from(context).inflate(R.layout.view_player, null) as PlayerView).apply {
@@ -641,12 +767,19 @@ private fun PlayerStage(
             enter = fadeIn(),
             exit = fadeOut(),
         ) {
-            Box(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize().padding(bottom = controlsBottomInset)) {
                 Row(
                     modifier =
                         Modifier
                             .fillMaxWidth()
                             .align(Alignment.TopStart)
+                            .then(
+                                if (isFullscreen) {
+                                    Modifier.windowInsetsPadding(WindowInsets.displayCutout)
+                                } else {
+                                    Modifier
+                                },
+                            )
                             .padding(horizontal = 6.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -763,7 +896,15 @@ private fun PlayerStage(
                         Modifier
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
-                            .then(if (isFullscreen) Modifier.navigationBarsPadding() else Modifier)
+                            .then(
+                                if (isFullscreen) {
+                                    Modifier
+                                        .windowInsetsPadding(WindowInsets.displayCutout)
+                                        .navigationBarsPadding()
+                                } else {
+                                    Modifier
+                                },
+                            )
                             .padding(horizontal = 6.dp, vertical = 6.dp),
                 ) {
                     Surface(
@@ -819,6 +960,22 @@ private fun PlayerStage(
                         }
                     }
                 }
+            }
+        }
+
+        if (relatedContent != null) {
+            AnimatedVisibility(
+                visible = relatedVisible,
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(relatedHeight)
+                        .zIndex(1f),
+                enter = slideInVertically(tween(300), initialOffsetY = { it }) + fadeIn(tween(180)),
+                exit = slideOutVertically(tween(300), targetOffsetY = { it }) + fadeOut(tween(180)),
+            ) {
+                relatedContent()
             }
         }
 
@@ -965,6 +1122,222 @@ private fun PlayerFullscreenButton(
 }
 
 @Composable
+private fun FullscreenRelatedVideos(
+    related: List<VideoSummary>,
+    isLoading: Boolean,
+    hasMore: Boolean,
+    error: Boolean,
+    onLoadMore: () -> Unit,
+    onRetry: () -> Unit,
+    onVideoClick: (VideoSummary) -> Unit,
+    hazeState: HazeState,
+) {
+    val listState = rememberLazyListState()
+    val shouldLoadMore by remember {
+        derivedStateOf {
+            val layout = listState.layoutInfo
+            val lastVisible = layout.visibleItemsInfo.lastOrNull()?.index ?: -1
+            layout.totalItemsCount > 0 && lastVisible >= layout.totalItemsCount - 2
+        }
+    }
+    LaunchedEffect(shouldLoadMore, hasMore, isLoading, error, related.size) {
+        if (shouldLoadMore && hasMore && !isLoading && !error) onLoadMore()
+    }
+
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.displayCutout)
+                .navigationBarsPadding()
+                .padding(bottom = 8.dp),
+    ) {
+        LazyRow(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            itemsIndexed(
+                items = related,
+                key = { _, video -> video.url },
+            ) { index, video ->
+                FullscreenRelatedCard(
+                    video = video,
+                    onClick = { onVideoClick(video) },
+                    modifier = Modifier.width(224.dp).fillMaxHeight(),
+                    startCorner = if (index == 0) 28.dp else 4.dp,
+                    endCorner = if (index == related.lastIndex && !hasMore && !isLoading) 28.dp else 4.dp,
+                    hazeState = hazeState,
+                )
+            }
+
+            when {
+                isLoading -> item(key = "related_loading") {
+                    Box(
+                        modifier = Modifier.width(64.dp).fillMaxHeight(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        LoadingIndicator(modifier = Modifier.size(24.dp), color = Color.White)
+                    }
+                }
+                error -> item(key = "related_error") {
+                    Surface(
+                        modifier = Modifier.width(240.dp).fillMaxHeight(),
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.player_related_error),
+                                style = MaterialTheme.typography.bodySmall,
+                                textAlign = TextAlign.Center,
+                            )
+                            TextButton(onClick = onRetry) {
+                                Text(stringResource(R.string.retry))
+                            }
+                        }
+                    }
+                }
+                related.isEmpty() -> item(key = "related_empty") {
+                    Surface(
+                        modifier = Modifier.width(240.dp).fillMaxHeight(),
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ) {
+                        Box(Modifier.padding(12.dp), contentAlignment = Alignment.Center) {
+                            Text(
+                                text = stringResource(R.string.player_related_empty),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FullscreenRelatedCard(
+    video: VideoSummary,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    startCorner: Dp = 28.dp,
+    endCorner: Dp = 28.dp,
+    hazeState: HazeState,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val animatedStartCorner by animateDpAsState(
+        targetValue = if (pressed) 28.dp else startCorner,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "related-start-corner",
+    )
+    val animatedEndCorner by animateDpAsState(
+        targetValue = if (pressed) 28.dp else endCorner,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "related-end-corner",
+    )
+    val duration = formatDuration(video.durationSeconds)
+    val views = if (video.viewCount >= 0) compactCount(video.viewCount) else ""
+    val uploaded =
+        video.uploadedAtEpochMillis?.let { epoch -> formatRelativeDate(epoch) }.orEmpty()
+    val meta =
+        listOfNotNull(
+            video.uploader.ifBlank { stringResource(R.string.unknown_channel) },
+            views.takeIf { it.isNotBlank() },
+            uploaded.takeIf { it.isNotBlank() },
+        ).joinToString(" • ")
+
+    val shape =
+        RoundedCornerShape(
+            topStart = animatedStartCorner,
+            bottomStart = animatedStartCorner,
+            topEnd = animatedEndCorner,
+            bottomEnd = animatedEndCorner,
+        )
+
+    Surface(
+        onClick = onClick,
+        interactionSource = interactionSource,
+        modifier = modifier.clip(shape),
+        shape = shape,
+        color = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .hazeBlur(
+                        input = HazeInput.Sources(hazeState),
+                        style = HazeMaterials.ultraThin(),
+                    ),
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(clusterInnerColor()),
+                ) {
+                    AsyncImage(
+                        model = video.thumbnailUrl,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                    if (duration.isNotBlank()) {
+                        Surface(
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp),
+                            shape = RoundedCornerShape(7.dp),
+                            color = Color.Black.copy(alpha = 0.7f),
+                            contentColor = Color.White,
+                        ) {
+                            Text(
+                                text = duration,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        }
+                    }
+                }
+                Text(
+                    text = video.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    minLines = 2,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = meta,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun PlayerDetails(
     video: VideoSummary,
     info: PlaybackInfo,
@@ -973,7 +1346,7 @@ private fun PlayerDetails(
     modifier: Modifier = Modifier,
 ) {
     val views = if (info.viewCount >= 0) viewsText(info.viewCount) else ""
-    val uploaded = info.uploadedAtEpochMillis?.let(::formatRelativeDate).orEmpty()
+    val uploaded = info.uploadedAtEpochMillis?.let { formatRelativeDate(it) }.orEmpty()
     val meta =
         listOfNotNull(
             views.takeIf { it.isNotBlank() },
@@ -1020,7 +1393,7 @@ private fun PlayerDetails(
         if (related.isNotEmpty()) {
             item(key = "related_header") {
                 Text(
-                    text = stringResource(R.string.more_from_search),
+                    text = stringResource(R.string.player_related),
                     modifier = Modifier.padding(top = 6.dp),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -1044,9 +1417,8 @@ private fun buildMediaSource(
     info: PlaybackInfo,
 ): MediaSource {
     val httpDataSourceFactory =
-        DefaultHttpDataSource.Factory()
+        OkHttpDataSource.Factory(NetworkManager.client)
             .setUserAgent("MxTube/0.1")
-            .setAllowCrossProtocolRedirects(true)
     val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
 
     val metadata =

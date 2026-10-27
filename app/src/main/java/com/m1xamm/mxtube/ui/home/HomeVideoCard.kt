@@ -52,7 +52,8 @@ fun HomeVideoCard(
     val cardColor = clusterCardColor()
     val duration = formatDuration(video.durationSeconds)
     val views = if (video.viewCount > 0) compactCount(video.viewCount) else ""
-    val uploaded = video.uploadedAtEpochMillis?.let(::formatRelativeDate).orEmpty()
+    val uploaded =
+        video.uploadedAtEpochMillis?.let { epoch -> formatRelativeDate(epoch) }.orEmpty()
     val meta =
         listOfNotNull(
             views.takeIf { it.isNotBlank() },

@@ -84,6 +84,10 @@ import androidx.compose.ui.zIndex
 import com.m1xamm.mxtube.R
 import com.m1xamm.mxtube.data.youtube.PlaybackInfo
 import com.m1xamm.mxtube.ui.common.formatSpeed
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.blur.hazeBlur
+import dev.chrisbanes.haze.blur.materials.HazeMaterials
 import kotlin.math.ln
 import kotlin.math.pow
 import kotlin.math.round
@@ -123,6 +127,7 @@ fun PlayerSettingsOverlay(
     selectedAudioTrackIndex: Int,
     selectedSubtitleIndex: Int,
     speed: Float,
+    hazeState: HazeState,
     onDismiss: () -> Unit,
     onQualitySelected: (Int) -> Unit,
     onAudioTrackSelected: (Int) -> Unit,
@@ -133,7 +138,6 @@ fun PlayerSettingsOverlay(
     BackHandler(enabled = page != null) { page = null }
 
     val shape = RoundedCornerShape(30.dp)
-    val panelColor = MaterialTheme.colorScheme.surfaceContainerLow
     val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
     val scrimInteraction = remember { MutableInteractionSource() }
     val panelInteraction = remember { MutableInteractionSource() }
@@ -216,7 +220,11 @@ fun PlayerSettingsOverlay(
                         )
                         .offset { IntOffset(0, animatedDragOffset.roundToInt()) }
                         .clip(shape)
-                        .background(panelColor)
+                        .hazeBlur(
+                            input = HazeInput.Sources(hazeState),
+                            style = HazeMaterials.ultraThin(),
+                        )
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.32f))
                         .clickable(
                             interactionSource = panelInteraction,
                             indication = null,
@@ -531,7 +539,7 @@ private fun NavigationRow(
         topCorner = topCorner,
         bottomCorner = bottomCorner,
         onClick = onClick,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 17.dp),
@@ -588,9 +596,9 @@ private fun OptionRow(
         onClick = onClick,
         containerColor =
             if (selected) {
-                MaterialTheme.colorScheme.surfaceContainerHighest
+                MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f)
             } else {
-                MaterialTheme.colorScheme.surfaceContainerHigh
+                MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f)
             },
     ) {
         Row(
@@ -710,7 +718,7 @@ private fun SpeedPicker(
         )
     val stepButtonColors =
         IconButtonDefaults.filledTonalIconButtonColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f),
             contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
@@ -804,7 +812,9 @@ private fun SpeedPicker(
                                 if (selected) {
                                     MaterialTheme.colorScheme.primary
                                 } else {
-                                    MaterialTheme.colorScheme.surfaceContainerHighest
+                                    MaterialTheme.colorScheme.surfaceContainerHighest.copy(
+                                        alpha = 0.6f,
+                                    )
                                 },
                             contentColor =
                                 if (selected) {

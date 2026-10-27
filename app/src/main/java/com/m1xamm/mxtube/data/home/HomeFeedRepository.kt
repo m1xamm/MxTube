@@ -5,9 +5,11 @@ import com.m1xamm.mxtube.data.youtube.SearchBatch
 import com.m1xamm.mxtube.data.youtube.VideoSummary
 import com.m1xamm.mxtube.data.youtube.YouTubeRepository
 import com.m1xamm.mxtube.data.youtube.YouTubeSearchSession
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 
 interface HomeFeedSession {
     val initialItems: List<HomeFeedItem>
@@ -39,17 +41,19 @@ class HomeFeedRepository(
         topic: HomeTopic,
         history: HistoryState,
     ): HomeFeedSession =
-        when (topic.kind) {
-            HomeTopicKind.Personalized -> openPersonalized(history)
-            HomeTopicKind.Kiosk -> openKiosk(topic)
-            HomeTopicKind.Search -> openSearch(topic)
+        withContext(Dispatchers.IO) {
+            when (topic.kind) {
+                HomeTopicKind.Personalized -> openPersonalized(history)
+                HomeTopicKind.Kiosk -> openKiosk(topic)
+                HomeTopicKind.Search -> openSearch(topic)
+            }
         }
 
     private suspend fun openPersonalized(history: HistoryState): HomeFeedSession =
         coroutineScope {
             val recent = history.watches.take(5)
             val kioskTopics = HomeTopics.base.filter { it.kioskId != null }
-            val discoverySearch = runCatching { youtube.search(DISCOVERY_QUERY) }.getOrNull()
+            val discoverySearch = runCatching { youtube.search(HomeTopics.discoveryQuery) }.getOrNull()
 
             val searchDeferred =
                 discoverySearch?.let { session -> async { runCatching { session.first() } } }
@@ -110,7 +114,7 @@ class HomeFeedRepository(
                 }
             val discovery = interleave(discoveryLists)
             if (recent.isEmpty() && discovery.isEmpty() && related.values.all { it.isEmpty() }) {
-                error("Домашняя лента пуста")
+                error("Empty home feed")
             }
 
             val items = HomeFeedEngine.rankInitial(history, related, discovery, limit = 32)
@@ -226,9 +230,5 @@ class HomeFeedRepository(
                     )
                 }
         }
-    }
-
-    private companion object {
-        const val DISCOVERY_QUERY = "популярное"
     }
 }

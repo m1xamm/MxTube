@@ -11,13 +11,14 @@ android {
         applicationId = "com.m1xamm.mxtube"
         minSdk = 26
         targetSdk = 37
-        versionCode = 29
-        versionName = "0.7.0"
+        versionCode = 30
+        versionName = "0.8.0"
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
@@ -72,6 +73,7 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
     implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.datasource.okhttp)
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.session)
     implementation(libs.haze)
@@ -82,4 +84,5 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation("org.json:json:20240303")
 }

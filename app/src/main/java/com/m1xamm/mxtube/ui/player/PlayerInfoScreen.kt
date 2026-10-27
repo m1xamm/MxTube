@@ -128,7 +128,7 @@ private fun PlayerInfoScreen(
     stageContent: @Composable () -> Unit,
 ) {
     val views = if (video.viewCount >= 0) viewsText(video.viewCount) else ""
-    val uploaded = video.uploadedAtEpochMillis?.let(::formatRelativeDate).orEmpty()
+    val uploaded = video.uploadedAtEpochMillis?.let { formatRelativeDate(it) }.orEmpty()
     val meta =
         listOfNotNull(
             views.takeIf { it.isNotBlank() },
@@ -215,7 +215,7 @@ private fun PlayerInfoScreen(
             if (related.isNotEmpty()) {
                 item(key = "info_related_header") {
                     Text(
-                        text = stringResource(R.string.more_from_search),
+                        text = stringResource(R.string.player_related),
                         modifier = Modifier.padding(top = 6.dp),
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,

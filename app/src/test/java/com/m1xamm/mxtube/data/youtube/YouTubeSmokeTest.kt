@@ -7,14 +7,24 @@ import org.junit.Before
 import org.junit.Test
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.downloader.Downloader
+import org.schabi.newpipe.extractor.downloader.Request
+import org.schabi.newpipe.extractor.downloader.Response
+import org.schabi.newpipe.extractor.localization.ContentCountry
+import org.schabi.newpipe.extractor.localization.Localization
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import org.schabi.newpipe.extractor.stream.StreamType
+import java.io.File
 
 class YouTubeSmokeTest {
     @Before
     fun setUp() {
         assumeTrue(System.getenv("MX_TUBE_SMOKE") == "1")
-        NewPipe.init(OkHttpDownloader())
+        NewPipe.init(
+            OkHttpDownloader(),
+            Localization("ru", "RU"),
+            ContentCountry("RU"),
+        )
     }
 
     @Test
@@ -72,5 +82,42 @@ class YouTubeSmokeTest {
 
         assertTrue("no qualities", info.qualities.isNotEmpty())
         assertTrue("quality without video url", info.qualities.all { it.videoUrl.isNotBlank() })
+    }
+
+    @Test
+    fun kioskViewCountsAreCorrected() = runBlocking {
+        val repository = YouTubeRepository()
+        val batch = repository.kiosk("trending_music").first()
+        assertTrue("kiosk returned no videos", batch.videos.isNotEmpty())
+        batch.videos.take(10).forEach { video ->
+            println("VIEWCOUNT ${video.viewCount} | ${video.title}")
+        }
+    }
+
+    @Test
+    fun dumpRelatedResponse() = runBlocking {
+        val delegate = OkHttpDownloader()
+        val capture =
+            object : Downloader() {
+                override fun execute(request: Request): Response {
+                    val response = delegate.execute(request)
+                    if (request.url().contains("/youtubei/v1/next")) {
+                        File("build/related-response.json").writeText(response.responseBody())
+                    }
+                    return response
+                }
+            }
+        NewPipe.init(capture, Localization("ru", "RU"), ContentCountry("RU"))
+        val extractor =
+            ServiceList.YouTube
+                .getStreamExtractor("https://www.youtube.com/watch?v=fVtmSti-4rA")
+                .apply {
+                    forceLocalization(Localization("ru", "RU"))
+                    forceContentCountry(ContentCountry("RU"))
+                }
+        extractor.fetchPage()
+        extractor.relatedItems?.items?.videos().orEmpty().take(5).forEach { video ->
+            println("RELATED ${video.viewCount} | ${video.title}")
+        }
     }
 }
