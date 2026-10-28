@@ -125,7 +125,7 @@ import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import com.m1xamm.mxtube.R
-import com.m1xamm.mxtube.data.network.NetworkManager
+import com.m1xamm.mxtube.data.network.Http
 import com.m1xamm.mxtube.data.youtube.PlaybackAudioTrack
 import com.m1xamm.mxtube.data.local.UserPreferences
 import com.m1xamm.mxtube.data.youtube.PlaybackInfo
@@ -1417,7 +1417,7 @@ private fun buildMediaSource(
     info: PlaybackInfo,
 ): MediaSource {
     val httpDataSourceFactory =
-        OkHttpDataSource.Factory(NetworkManager.client)
+        OkHttpDataSource.Factory(Http.client)
             .setUserAgent("MxTube/0.1")
     val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
 

@@ -2,3 +2,4 @@
 -dontwarn javax.script.**
 -dontwarn org.mozilla.javascript.**
 -keep class org.mozilla.javascript.** { *; }
+-keep class org.schabi.newpipe.extractor.services.youtube.protos.** { *; }

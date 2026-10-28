@@ -9,7 +9,7 @@ import com.m1xamm.mxtube.data.home.HomeTopics
 import com.m1xamm.mxtube.data.local.HomeFeedCache
 import com.m1xamm.mxtube.data.local.LocalHistoryStore
 import com.m1xamm.mxtube.data.local.UserPreferences
-import com.m1xamm.mxtube.data.network.NetworkManager
+import com.m1xamm.mxtube.data.network.Http
 import com.m1xamm.mxtube.data.youtube.OkHttpDownloader
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.localization.ContentCountry
@@ -25,7 +25,6 @@ class MxTubeApplication : Application(), SingletonImageLoader.Factory {
 
         AppLocale.init(this)
         HomeTopics.init(this)
-        NetworkManager.init(this)
         UserPreferences.init(this)
 
         val locale = AppLocale.locale
@@ -45,7 +44,7 @@ class MxTubeApplication : Application(), SingletonImageLoader.Factory {
             .components {
                 add(
                     OkHttpNetworkFetcherFactory(
-                        callFactory = { NetworkManager.client },
+                        callFactory = { Http.client },
                     ),
                 )
             }

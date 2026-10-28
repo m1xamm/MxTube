@@ -1,5 +1,6 @@
 package com.m1xamm.mxtube.ui.player
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.m1xamm.mxtube.data.youtube.PlaybackInfo
@@ -108,7 +109,8 @@ class PlayerViewModel(
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
-                } catch (_: Exception) {
+                } catch (error: Exception) {
+                    Log.e(LOG_TAG, "resolve failed: $videoUrl", error)
                     _uiState.update { it.copy(isLoading = false, error = true) }
                 }
             }
@@ -218,5 +220,6 @@ class PlayerViewModel(
 
     private companion object {
         const val MAX_RELATED = 240
+        const val LOG_TAG = "MxTubePlayer"
     }
 }
