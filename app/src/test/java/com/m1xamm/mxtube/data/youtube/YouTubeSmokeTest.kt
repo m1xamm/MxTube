@@ -7,6 +7,7 @@ import org.junit.Before
 import org.junit.Test
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.channel.tabs.ChannelTabs
 import org.schabi.newpipe.extractor.downloader.Downloader
 import org.schabi.newpipe.extractor.downloader.Request
 import org.schabi.newpipe.extractor.downloader.Response
@@ -15,6 +16,7 @@ import org.schabi.newpipe.extractor.localization.Localization
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import org.schabi.newpipe.extractor.stream.StreamType
 import java.io.File
+import java.util.Locale
 
 class YouTubeSmokeTest {
     @Before
@@ -26,6 +28,8 @@ class YouTubeSmokeTest {
             ContentCountry("RU"),
         )
     }
+
+    private fun repository() = YouTubeRepository(string = { "Audio" }, locale = { Locale.ENGLISH })
 
     @Test
     fun searchAndResolveStream() {
@@ -63,7 +67,7 @@ class YouTubeSmokeTest {
 
     @Test
     fun repositoryResolvesPlayableQualities() = runBlocking {
-        val repository = YouTubeRepository()
+        val repository = repository()
         val session = repository.search("lofi hip hop")
         val batch = session.first()
 
@@ -85,8 +89,44 @@ class YouTubeSmokeTest {
     }
 
     @Test
+    fun channelHeaderVideosAndPlaylistsAreExtracted() = runBlocking<Unit> {
+        val repository = repository()
+        val batch = repository.search("lofi girl").first()
+        val video = batch.videos.first()
+        assertTrue("search rows must carry the channel url", video.uploaderUrl != null)
+
+        val page = repository.channelPage(video.uploaderUrl.orEmpty())
+        val header = page.header
+        println("CHANNEL key=${header.key} name=${header.name} url=${header.url}")
+        println("CHANNEL avatar=${header.avatarUrl} subs=${header.subscriberCount} desc=${header.description.length}")
+        println("CHANNEL tabs=${page.availableTabs}")
+        assertTrue("channel has no canonical id", ChannelIdentity.isChannelId(header.key))
+        assertTrue("channel has no avatar", header.avatarUrl != null)
+
+        val videosSession = page.tab(ChannelTabs.VIDEOS)
+        val videos = videosSession?.first()
+        assertTrue("channel videos tab returned nothing", videos != null && videos.videos.isNotEmpty())
+        println("TAB videos=${videos?.videos?.size} hasMore=${videosSession?.hasMore}")
+        videos?.videos?.take(3)?.forEach { println("  ${it.uploadedAtEpochMillis} | ${it.uploaderUrl} | ${it.title}") }
+
+        if (videos != null && videosSession?.hasMore == true) {
+            val more = videosSession.loadMore()
+            println("TAB videos page2=${more.videos.size}")
+            assertTrue("second page was empty", more.videos.isNotEmpty())
+            assertTrue(
+                "second page repeated the first",
+                more.videos.none { newer -> videos.videos.any { it.url == newer.url } },
+            )
+        }
+
+        val playlists = page.tab(ChannelTabs.PLAYLISTS)?.first()
+        println("TAB playlists=${playlists?.playlists?.size}")
+        playlists?.playlists?.take(3)?.forEach { println("  ${it.videoCount} | ${it.url} | ${it.name}") }
+    }
+
+    @Test
     fun kioskViewCountsAreCorrected() = runBlocking {
-        val repository = YouTubeRepository()
+        val repository = repository()
         val batch = repository.kiosk("trending_music").first()
         assertTrue("kiosk returned no videos", batch.videos.isNotEmpty())
         batch.videos.take(10).forEach { video ->

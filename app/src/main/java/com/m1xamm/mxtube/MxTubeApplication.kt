@@ -8,6 +8,7 @@ import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import com.m1xamm.mxtube.data.home.HomeTopics
 import com.m1xamm.mxtube.data.local.HomeFeedCache
 import com.m1xamm.mxtube.data.local.LocalHistoryStore
+import com.m1xamm.mxtube.data.local.SubscriptionsStore
 import com.m1xamm.mxtube.data.local.UserPreferences
 import com.m1xamm.mxtube.data.network.Http
 import com.m1xamm.mxtube.data.youtube.OkHttpDownloader
@@ -19,6 +20,7 @@ import java.util.Locale
 class MxTubeApplication : Application(), SingletonImageLoader.Factory {
     val historyStore: LocalHistoryStore by lazy { LocalHistoryStore(this) }
     val homeFeedCache: HomeFeedCache by lazy { HomeFeedCache(this) }
+    val subscriptionsStore: SubscriptionsStore by lazy { SubscriptionsStore(this) }
 
     override fun onCreate() {
         super.onCreate()

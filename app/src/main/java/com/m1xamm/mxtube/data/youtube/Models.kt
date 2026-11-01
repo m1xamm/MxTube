@@ -8,11 +8,36 @@ data class VideoSummary(
     val viewCount: Long,
     val uploadedAtEpochMillis: Long?,
     val thumbnailUrl: String?,
+    val uploaderUrl: String? = null,
 )
 
 data class SearchBatch(
     val videos: List<VideoSummary>,
     val hasMore: Boolean,
+)
+
+data class PlaylistSummary(
+    val url: String,
+    val name: String,
+    val videoCount: Long,
+    val thumbnailUrl: String?,
+    val uploader: String?,
+)
+
+data class ChannelTabBatch(
+    val videos: List<VideoSummary> = emptyList(),
+    val playlists: List<PlaylistSummary> = emptyList(),
+    val hasMore: Boolean,
+)
+
+data class ChannelHeader(
+    val key: String,
+    val url: String,
+    val name: String,
+    val avatarUrl: String?,
+    val bannerUrl: String?,
+    val subscriberCount: Long,
+    val description: String,
 )
 
 data class PlaybackQuality(
@@ -54,4 +79,6 @@ data class PlaybackInfo(
     val defaultAudioTrackIndex: Int,
     val subtitles: List<PlaybackSubtitle>,
     val related: List<VideoSummary> = emptyList(),
+    val uploaderUrl: String? = null,
+    val uploaderAvatarUrl: String? = null,
 )
