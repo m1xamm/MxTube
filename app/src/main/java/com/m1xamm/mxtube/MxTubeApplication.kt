@@ -32,6 +32,8 @@ class MxTubeApplication : Application(), SingletonImageLoader.Factory {
         val locale = AppLocale.locale
         val countryCode =
             locale.country
+                .ifBlank { COUNTRY_BY_LANGUAGE[locale.language] }
+                .orEmpty()
                 .ifBlank { Locale.getDefault().country }
                 .ifBlank { "US" }
         NewPipe.init(
@@ -39,6 +41,14 @@ class MxTubeApplication : Application(), SingletonImageLoader.Factory {
             Localization(locale.language, countryCode),
             ContentCountry(countryCode),
         )
+    }
+
+    companion object {
+        /**
+         * A per-app language leaves the region empty, and YouTube rejects a channel request whose
+         * language and region disagree, so an unmapped language must not inherit the device region.
+         */
+        private val COUNTRY_BY_LANGUAGE = mapOf("ru" to "RU", "uk" to "UA", "en" to "US")
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader =
