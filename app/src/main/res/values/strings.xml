@@ -22,6 +22,11 @@
     <string name="cancel">Cancel</string>
     <string name="retry">Retry</string>
     <string name="unknown_channel">Unknown channel</string>
+    <string name="subscribe">Subscribe</string>
+    <string name="subscribed">Subscribed</string>
+    <string name="unsubscribe_title">Unsubscribe?</string>
+    <string name="unsubscribe_message">You will stop seeing %1$s in the subscriptions feed.</string>
+    <string name="unsubscribe_confirm">Unsubscribe</string>
     <string name="relative_just_now">just now</string>
     <string name="relative_minutes">%1$d min ago</string>
     <string name="relative_hours">%1$d h ago</string>

@@ -47,6 +47,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -60,7 +61,10 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
@@ -124,10 +128,12 @@ import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
+import com.m1xamm.mxtube.MxTubeApplication
 import com.m1xamm.mxtube.R
+import com.m1xamm.mxtube.data.local.SubscriptionsStore
+import com.m1xamm.mxtube.data.local.UserPreferences
 import com.m1xamm.mxtube.data.network.Http
 import com.m1xamm.mxtube.data.youtube.PlaybackAudioTrack
-import com.m1xamm.mxtube.data.local.UserPreferences
 import com.m1xamm.mxtube.data.youtube.PlaybackInfo
 import com.m1xamm.mxtube.data.youtube.PlaybackQuality
 import com.m1xamm.mxtube.data.youtube.PlaybackSubtitle
@@ -167,9 +173,15 @@ fun PlayerScreen(
     startFullscreen: Boolean = false,
     onFullscreenChanged: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
+    subscriptions: SubscriptionsStore =
+        (LocalContext.current.applicationContext as MxTubeApplication).subscriptionsStore,
     viewModel: PlayerViewModel =
         viewModel(key = video.url) {
-            PlayerViewModel(video.url, initialRelated = related)
+            PlayerViewModel(
+                video.url,
+                initialRelated = related,
+                subscriptions = subscriptions,
+            )
         },
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -546,6 +558,10 @@ fun PlayerScreen(
                                 info = info,
                                 related = state.related,
                                 onRelatedClick = onRelatedClick,
+                                isSubscribed = state.isSubscribed,
+                                isSubscribePending = state.isSubscribePending,
+                                onSubscribe = viewModel::subscribe,
+                                onUnsubscribe = viewModel::unsubscribe,
                                 modifier = Modifier.weight(1f),
                             )
                         }
@@ -1343,8 +1359,14 @@ private fun PlayerDetails(
     info: PlaybackInfo,
     related: List<VideoSummary>,
     onRelatedClick: (VideoSummary) -> Unit,
+    isSubscribed: Boolean,
+    isSubscribePending: Boolean,
+    onSubscribe: () -> Unit,
+    onUnsubscribe: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var confirmUnsubscribe by remember { mutableStateOf(false) }
+    val channelName = info.uploader.ifBlank { stringResource(R.string.unknown_channel) }
     val views = if (info.viewCount >= 0) viewsText(info.viewCount) else ""
     val uploaded = info.uploadedAtEpochMillis?.let { formatRelativeDate(it) }.orEmpty()
     val meta =
@@ -1371,20 +1393,44 @@ private fun PlayerDetails(
                     overflow = TextOverflow.Ellipsis,
                 )
 
-                Spacer(Modifier.height(10.dp))
-
-                Text(
-                    text = info.uploader.ifBlank { stringResource(R.string.unknown_channel) },
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-
                 if (meta.isNotBlank()) {
-                    Spacer(Modifier.height(3.dp))
+                    Spacer(Modifier.height(6.dp))
                     Text(
                         text = meta,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    ChannelAvatar(
+                        url = info.uploaderAvatarUrl,
+                        name = channelName,
+                    )
+                    Text(
+                        text = channelName,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    SubscribeButton(
+                        subscribed = isSubscribed,
+                        pending = isSubscribePending,
+                        onClick = {
+                            if (isSubscribed) {
+                                confirmUnsubscribe = true
+                            } else {
+                                onSubscribe()
+                            }
+                        },
                     )
                 }
             }
@@ -1407,6 +1453,97 @@ private fun PlayerDetails(
                 )
             }
         }
+    }
+
+    if (confirmUnsubscribe) {
+        AlertDialog(
+            onDismissRequest = { confirmUnsubscribe = false },
+            title = { Text(stringResource(R.string.unsubscribe_title)) },
+            text = { Text(stringResource(R.string.unsubscribe_message, channelName)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmUnsubscribe = false
+                        onUnsubscribe()
+                    },
+                ) {
+                    Text(stringResource(R.string.unsubscribe_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmUnsubscribe = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun ChannelAvatar(
+    url: String?,
+    name: String,
+    size: Dp = 40.dp,
+) {
+    Box(
+        modifier =
+            Modifier
+                .size(size)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (url.isNullOrBlank()) {
+            Text(
+                text = name.trim().take(1).uppercase(),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            AsyncImage(
+                model = url,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SubscribeButton(
+    subscribed: Boolean,
+    pending: Boolean,
+    onClick: () -> Unit,
+) {
+    val pill = CircleShape
+    FilledTonalButton(
+        onClick = onClick,
+        enabled = !pending,
+        shape = pill,
+        modifier = Modifier.heightIn(min = 36.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+        colors =
+            ButtonDefaults.filledTonalButtonColors(
+                containerColor =
+                    if (subscribed) {
+                        MaterialTheme.colorScheme.surfaceContainerHigh
+                    } else {
+                        MaterialTheme.colorScheme.secondaryContainer
+                    },
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+    ) {
+        Text(
+            text =
+                stringResource(
+                    if (subscribed) R.string.subscribed else R.string.subscribe,
+                ),
+            style = MaterialTheme.typography.labelLarge,
+            maxLines = 1,
+        )
     }
 }
 

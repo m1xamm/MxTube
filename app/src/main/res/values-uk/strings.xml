@@ -22,6 +22,11 @@
     <string name="cancel">Скасувати</string>
     <string name="retry">Повторити</string>
     <string name="unknown_channel">Невідомий канал</string>
+    <string name="subscribe">Підписатися</string>
+    <string name="subscribed">Ви підписані</string>
+    <string name="unsubscribe_title">Відписатися?</string>
+    <string name="unsubscribe_message">Канал %1$s більше не з\'являтиметься у стрічці підписок.</string>
+    <string name="unsubscribe_confirm">Відписатися</string>
     <string name="relative_just_now">щойно</string>
     <string name="relative_minutes">%1$d хв. тому</string>
     <string name="relative_hours">%1$d год. тому</string>

@@ -3,6 +3,9 @@ package com.m1xamm.mxtube.ui.player
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.m1xamm.mxtube.data.local.SubscriptionsStore
+import com.m1xamm.mxtube.data.youtube.ChannelIdentity
+import com.m1xamm.mxtube.data.youtube.ChannelRef
 import com.m1xamm.mxtube.data.youtube.PlaybackInfo
 import com.m1xamm.mxtube.data.youtube.VideoSummary
 import com.m1xamm.mxtube.data.youtube.YouTubeRepository
@@ -12,6 +15,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -26,12 +30,16 @@ data class PlayerUiState(
     val isLoadingRelated: Boolean = false,
     val hasMoreRelated: Boolean = true,
     val relatedError: Boolean = false,
+    val uploaderKey: String? = null,
+    val isSubscribed: Boolean = false,
+    val isSubscribePending: Boolean = false,
 )
 
 class PlayerViewModel(
     private val videoUrl: String,
     initialRelated: List<VideoSummary> = emptyList(),
     private val repository: YouTubeRepository = YouTubeRepository(),
+    private val subscriptions: SubscriptionsStore,
 ) : ViewModel() {
     private val _uiState =
         MutableStateFlow(
@@ -45,12 +53,43 @@ class PlayerViewModel(
     private var relatedJob: Job? = null
     private val relatedSeeds = ArrayDeque<String>()
     private val expandedSeeds = mutableSetOf(videoUrl)
+    private val uploaderKey = MutableStateFlow<String?>(null)
 
     init {
         initialRelated.forEach { seed ->
             if (seed.url != videoUrl) relatedSeeds.addLast(seed.url)
         }
         load()
+        viewModelScope.launch {
+            combine(subscriptions.state, uploaderKey) { state, key ->
+                key != null && state.channels.any { it.key == key }
+            }.collect { subscribed ->
+                _uiState.update { it.copy(isSubscribed = subscribed) }
+            }
+        }
+    }
+
+    fun subscribe() {
+        val info = _uiState.value.info ?: return
+        val url = info.uploaderUrl ?: return
+        if (_uiState.value.isSubscribePending) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSubscribePending = true) }
+            val result =
+                runCatching { repository.channel(url) }
+                    .onFailure { Log.e(LOG_TAG, "subscribe failed: $url", it) }
+            result.getOrNull()?.let { header ->
+                val ref = ChannelRef(header.key, header.url)
+                uploaderKey.value = ref.key
+                subscriptions.subscribe(ref, header.name, header.avatarUrl)
+            }
+            _uiState.update { it.copy(isSubscribePending = false) }
+        }
+    }
+
+    fun unsubscribe() {
+        val key = uploaderKey.value ?: return
+        viewModelScope.launch { subscriptions.unsubscribe(key) }
     }
 
     fun load() {
@@ -60,6 +99,8 @@ class PlayerViewModel(
             PlayerUiState(
                 related = current.related,
                 hasMoreRelated = current.hasMoreRelated,
+                uploaderKey = current.uploaderKey,
+                isSubscribed = current.isSubscribed,
             )
         loadJob =
             viewModelScope.launch {
@@ -93,10 +134,12 @@ class PlayerViewModel(
                             ?.let { label -> info.subtitles.indexOfFirst { it.label == label } }
                             ?.takeIf { it >= 0 }
                             ?: -1
+                    uploaderKey.value = ChannelIdentity.keyOf(info.uploaderUrl)
                     _uiState.update {
                         it.copy(
                             isLoading = false,
                             info = info,
+                            uploaderKey = uploaderKey.value,
                             selectedQualityIndex = qualityIndex,
                             selectedAudioTrackIndex = audioIndex,
                             selectedSubtitleIndex = subtitleIndex,
