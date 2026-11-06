@@ -2,10 +2,13 @@ package com.m1xamm.mxtube.data.local
 
 import android.content.Context
 import com.m1xamm.mxtube.data.youtube.ChannelRef
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -16,11 +19,20 @@ import java.io.File
 class SubscriptionsStore internal constructor(private val file: File) {
     constructor(context: Context) : this(File(context.filesDir, FILE_NAME))
 
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
     private val _state = MutableStateFlow(SubscriptionsState())
     private var loaded = false
 
     val state: StateFlow<SubscriptionsState> = _state.asStateFlow()
+
+    init {
+        scope.launch {
+            mutex.withLock {
+                ensureLoaded()
+            }
+        }
+    }
 
     fun isSubscribed(key: String?): Boolean =
         key != null && _state.value.channels.any { it.key == key }
