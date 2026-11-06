@@ -12,6 +12,7 @@ import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.Page
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.StreamingService
+import org.schabi.newpipe.extractor.channel.ChannelExtractor
 import org.schabi.newpipe.extractor.channel.tabs.ChannelTabExtractor
 import org.schabi.newpipe.extractor.kiosk.KioskExtractor
 import org.schabi.newpipe.extractor.linkhandler.ListLinkHandler
@@ -61,10 +62,11 @@ class YouTubeRepository(
                     key = channelId ?: fallback?.key.orEmpty(),
                     url = channelId?.let(ChannelIdentity::canonicalUrl) ?: fallback?.url.orEmpty(),
                     name = extractor.name.orEmpty(),
-                    avatarUrl = extractor.avatars.bestUrl(),
-                    bannerUrl = extractor.banners.bestUrl(),
-                    subscriberCount = extractor.subscriberCount,
-                    description = extractor.description.orEmpty(),
+                    avatarUrl = runCatching { extractor.avatars.bestUrl() }.getOrNull(),
+                    bannerUrl = runCatching { extractor.banners.bestUrl() }.getOrNull(),
+                    subscriberCount = runCatching { extractor.subscriberCount }
+                        .getOrDefault(ChannelExtractor.UNKNOWN_SUBSCRIBER_COUNT),
+                    description = runCatching { extractor.description.orEmpty() }.getOrDefault(""),
                 )
 
             ChannelPage(header, extractor.service, extractor.tabs)
@@ -109,7 +111,7 @@ class YouTubeRepository(
                     runCatching { extractor.relatedItems?.items?.videos().orEmpty() }
                         .getOrDefault(emptyList()),
                 uploaderUrl = extractor.uploaderUrl,
-                uploaderAvatarUrl = extractor.uploaderAvatars.bestUrl(),
+                uploaderAvatarUrl = runCatching { extractor.uploaderAvatars.bestUrl() }.getOrNull(),
             )
         }
 
