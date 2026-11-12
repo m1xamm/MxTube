@@ -60,6 +60,7 @@ class LocalHistoryStore(context: Context) {
                     progressMs = previous?.progressMs ?: 0L,
                     topics = topics + previous?.topics.orEmpty(),
                     sourceQuery = sourceQuery ?: previous?.sourceQuery,
+                    uploaderUrl = video.uploaderUrl ?: previous?.uploaderUrl,
                 )
             current.copy(
                 watches =
@@ -169,6 +170,7 @@ class LocalHistoryStore(context: Context) {
                                     progressMs = item.optLong("progressMs"),
                                     topics = item.optJSONArray("topics").toStringSet(),
                                     sourceQuery = item.optString("sourceQuery").takeIf { it.isNotBlank() },
+                                    uploaderUrl = item.optString("uploaderUrl").takeIf { it.isNotBlank() },
                                 ),
                             )
                         }
@@ -223,6 +225,7 @@ class LocalHistoryStore(context: Context) {
                                         put("progressMs", entry.progressMs)
                                         put("topics", JSONArray(entry.topics.toList()))
                                         put("sourceQuery", entry.sourceQuery.orEmpty())
+                                        put("uploaderUrl", entry.uploaderUrl.orEmpty())
                                     },
                                 )
                             }

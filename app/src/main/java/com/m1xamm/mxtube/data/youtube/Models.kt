@@ -38,6 +38,9 @@ data class ChannelHeader(
     val bannerUrl: String?,
     val subscriberCount: Long,
     val description: String,
+    val handle: String? = null,
+    val videoCount: Long = -1L,
+    val isVerified: Boolean = false,
 )
 
 data class PlaybackQuality(

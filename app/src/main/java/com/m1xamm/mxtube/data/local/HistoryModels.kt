@@ -10,6 +10,7 @@ data class WatchHistoryEntry(
     val progressMs: Long = 0L,
     val topics: Set<String> = emptySet(),
     val sourceQuery: String? = null,
+    val uploaderUrl: String? = null,
 )
 
 data class SearchHistoryEntry(

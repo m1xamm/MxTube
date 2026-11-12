@@ -74,6 +74,72 @@ class ViewCountCorrectorTest {
     }
 
     @Test
+    fun channelLockupWithoutLeadingIconKeepsTheViewMultiplier() {
+        ViewCountCorrector.record(
+            """{"contents":{"lockupViewModel":{"contentId":"channelvid1","contentType":"LOCKUP_CONTENT_TYPE_VIDEO","metadata":{"lockupMetadataViewModel":{"metadata":{"contentMetadataViewModel":{"metadataRows":[{"metadataParts":[{"text":{"content":"11,5 млн просмотров"}},{"text":{"content":"1 мес. назад"}}]}]}}}}}}}""",
+        )
+        assertEquals(11_500_000L, ViewCountCorrector.correct("https://www.youtube.com/watch?v=channelvid1", 11))
+    }
+
+    @Test
+    fun channelGridViewCountKeepsTheViewMultiplier() {
+        ViewCountCorrector.record(
+            """{"contents":{"gridVideoRenderer":{"videoId":"gridvid0001","shortViewCountText":{"simpleText":"10 млн просмотров"}}}}""",
+        )
+        assertEquals(10_000_000L, ViewCountCorrector.correct("https://www.youtube.com/watch?v=gridvid0001", 10))
+    }
+
+    @Test
+    fun channelSubscriberHeaderKeepsTheSubscriberMultiplier() {
+        val id = "UC2222222222222222222222"
+        ViewCountCorrector.record(
+            """{"metadata":{"channelMetadataRenderer":{"externalId":"$id"}},"header":{"pageHeaderViewModel":{"metadata":{"contentMetadataViewModel":{"metadataRows":[{"metadataParts":[{"text":{"content":"3,4 млн подписчиков"}}]}]}}}}}""",
+        )
+        assertEquals(3_400_000L, ViewCountCorrector.correctSubscribers(id, 3))
+    }
+
+    @Test
+    fun dateWithoutViewsLabelCannotBeMistakenForViews() {
+        ViewCountCorrector.record(
+            """{"contents":{"lockupViewModel":{"contentId":"datevid0001","metadata":{"lockupMetadataViewModel":{"metadata":{"contentMetadataViewModel":{"metadataRows":[{"metadataParts":[{"text":{"content":"1 month ago"}}]}]}}}}}}}""",
+        )
+        assertEquals(21L, ViewCountCorrector.correct("https://www.youtube.com/watch?v=datevid0001", 21))
+    }
+
+    @Test
+    fun readsLegacyChannelHandleAndVideoCount() {
+        val id = channelId("metadataOld")
+        ViewCountCorrector.record(
+            """{"metadata":{"channelMetadataRenderer":{"externalId":"$id","vanityChannelUrl":"https://www.youtube.com/@LegacyHandle"}},"header":{"c4TabbedHeaderRenderer":{"subscriberCountText":{"runs":[{"text":"3,4 млн подписчиков"}]},"videosCountText":{"runs":[{"text":"1 234 видео"}]}}}}""",
+        )
+        assertEquals("@LegacyHandle", ViewCountCorrector.channelHandle(id))
+        assertEquals(1_234L, ViewCountCorrector.channelVideoCount(id))
+        assertEquals(3_400_000L, ViewCountCorrector.correctSubscribers(id, 3))
+    }
+
+    @Test
+    fun readsPageHeaderViewModelHandleAndCounts() {
+        val id = channelId("metadataNew")
+        ViewCountCorrector.record(
+            """{"metadata":{"channelMetadataRenderer":{"externalId":"$id"}},"header":{"pageHeaderViewModel":{"metadata":{"contentMetadataViewModel":{"metadataRows":[{"metadataParts":[{"text":{"content":"@NewHandle"}},{"text":{"content":"1.2M subscribers"}},{"text":{"content":"345 videos"}}]}]}}}}}""",
+        )
+        assertEquals("@NewHandle", ViewCountCorrector.channelHandle(id))
+        assertEquals(345L, ViewCountCorrector.channelVideoCount(id))
+        assertEquals(1_200_000L, ViewCountCorrector.correctSubscribers(id, 1))
+    }
+
+    @Test
+    fun ignoresInvalidHandleAndKeepsUnknownVideoCount() {
+        val id = channelId("metadataBad")
+        ViewCountCorrector.record(
+            """{"metadata":{"channelMetadataRenderer":{"externalId":"$id","vanityChannelUrl":"https://example.com/@NotYouTube"}},"header":{"pageHeaderViewModel":{"metadata":{"contentMetadataViewModel":{"metadataRows":[{"metadataParts":[{"text":{"content":"@not a handle"}},{"text":{"content":"12K subscribers"}}]}]}}}}}""",
+        )
+        assertNull(ViewCountCorrector.channelHandle(id))
+        assertEquals(-1L, ViewCountCorrector.channelVideoCount(id))
+        assertEquals(12_000L, ViewCountCorrector.correctSubscribers(id, 1))
+    }
+
+    @Test
     fun acceptsXssiPrefixedResponses() {
         ViewCountCorrector.record(
             ")]}'\n" +
@@ -84,4 +150,6 @@ class ViewCountCorrectorTest {
             ViewCountCorrector.correct("https://www.youtube.com/watch?v=xssiprefix1", 33),
         )
     }
+
+    private fun channelId(suffix: String) = "UC" + suffix.padEnd(22, '0')
 }

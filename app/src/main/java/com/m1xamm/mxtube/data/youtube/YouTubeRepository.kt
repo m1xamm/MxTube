@@ -2,8 +2,6 @@ package com.m1xamm.mxtube.data.youtube
 
 import com.m1xamm.mxtube.AppLocale
 import com.m1xamm.mxtube.R
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.Extractor
 import org.schabi.newpipe.extractor.InfoItem
 import org.schabi.newpipe.extractor.ListExtractor.InfoItemsPage
@@ -16,6 +14,7 @@ import org.schabi.newpipe.extractor.channel.ChannelExtractor
 import org.schabi.newpipe.extractor.channel.tabs.ChannelTabExtractor
 import org.schabi.newpipe.extractor.kiosk.KioskExtractor
 import org.schabi.newpipe.extractor.linkhandler.ListLinkHandler
+import org.schabi.newpipe.extractor.playlist.PlaylistExtractor
 import org.schabi.newpipe.extractor.playlist.PlaylistInfoItem
 import org.schabi.newpipe.extractor.search.SearchExtractor
 import org.schabi.newpipe.extractor.stream.AudioStream
@@ -40,6 +39,9 @@ class YouTubeRepository(
             ServiceList.YouTube.kioskList.getExtractorById(kioskId, null).withAppLocale(),
         )
 
+    fun playlist(url: String): YouTubePlaylistSession =
+        YouTubePlaylistSession(ServiceList.YouTube.getPlaylistExtractor(url).withAppLocale())
+
     suspend fun channel(url: String): ChannelHeader = channelPage(url).header
 
     /**
@@ -47,7 +49,7 @@ class YouTubeRepository(
      * YouTube answer the browse request with INVALID_ARGUMENT.
      */
     suspend fun channelPage(url: String): ChannelPage =
-        withContext(Dispatchers.IO) {
+        withExtractorContext {
             val extractor = ServiceList.YouTube.getChannelExtractor(url).withAppLocale()
             extractor.fetchPage()
 
@@ -64,23 +66,28 @@ class YouTubeRepository(
                     name = extractor.name.orEmpty(),
                     avatarUrl = runCatching { extractor.avatars.bestUrl() }.getOrNull(),
                     bannerUrl = runCatching { extractor.banners.bestUrl() }.getOrNull(),
-                    subscriberCount = runCatching { extractor.subscriberCount }
-                        .getOrDefault(ChannelExtractor.UNKNOWN_SUBSCRIBER_COUNT),
+                    subscriberCount = ViewCountCorrector.correctSubscribers(
+                        channelId ?: fallback?.key.orEmpty(),
+                        runCatching { extractor.subscriberCount }.getOrDefault(ChannelExtractor.UNKNOWN_SUBSCRIBER_COUNT),
+                    ),
                     description = runCatching { extractor.description.orEmpty() }.getOrDefault(""),
+                    handle = ViewCountCorrector.channelHandle(channelId ?: fallback?.key.orEmpty()),
+                    videoCount = ViewCountCorrector.channelVideoCount(channelId ?: fallback?.key.orEmpty()),
+                    isVerified = runCatching { extractor.isVerified }.getOrDefault(false),
                 )
 
             ChannelPage(header, extractor.service, extractor.tabs)
         }
 
     suspend fun related(url: String): List<VideoSummary> =
-        withContext(Dispatchers.IO) {
+        withExtractorContext {
             val extractor = ServiceList.YouTube.getStreamExtractor(url).withAppLocale()
             extractor.fetchPage()
             extractor.relatedItems?.items?.videos().orEmpty()
         }
 
     suspend fun resolve(url: String): PlaybackInfo =
-        withContext(Dispatchers.IO) {
+        withExtractorContext {
             val extractor = ServiceList.YouTube.getStreamExtractor(url).withAppLocale()
             extractor.fetchPage()
 
@@ -270,21 +277,27 @@ class YouTubeSearchSession internal constructor(
     val hasMore: Boolean
         get() = nextPage != null
 
-    suspend fun first(): SearchBatch =
-        withContext(Dispatchers.IO) {
+    suspend fun first(): SearchBatch {
+        val (batch, next) = withExtractorContext {
             extractor.fetchPage()
             val page = extractor.initialPage
-            nextPage = if (page.hasNextPage()) page.nextPage else null
-            SearchBatch(videos = page.videos(), hasMore = hasMore)
+            val next = if (page.hasNextPage()) page.nextPage else null
+            SearchBatch(videos = page.videos(), hasMore = next != null) to next
         }
+        nextPage = next
+        return batch
+    }
 
-    suspend fun loadMore(): SearchBatch =
-        withContext(Dispatchers.IO) {
-            val page = nextPage ?: return@withContext SearchBatch(emptyList(), false)
+    suspend fun loadMore(): SearchBatch {
+        val page = nextPage ?: return SearchBatch(emptyList(), false)
+        val (batch, next) = withExtractorContext {
             val result = extractor.getPage(page)
-            nextPage = if (result.hasNextPage()) result.nextPage else null
-            SearchBatch(videos = result.videos(), hasMore = hasMore)
+            val next = if (result.hasNextPage()) result.nextPage else null
+            SearchBatch(videos = result.videos(), hasMore = next != null) to next
         }
+        nextPage = next
+        return batch
+    }
 }
 
 class YouTubeKioskSession internal constructor(
@@ -295,21 +308,27 @@ class YouTubeKioskSession internal constructor(
     val hasMore: Boolean
         get() = nextPage != null
 
-    suspend fun first(): SearchBatch =
-        withContext(Dispatchers.IO) {
+    suspend fun first(): SearchBatch {
+        val (batch, next) = withExtractorContext {
             extractor.fetchPage()
             val page = extractor.initialPage
-            nextPage = if (page.hasNextPage()) page.nextPage else null
-            SearchBatch(videos = page.items.videos(), hasMore = hasMore)
+            val next = if (page.hasNextPage()) page.nextPage else null
+            SearchBatch(videos = page.items.videos(), hasMore = next != null) to next
         }
+        nextPage = next
+        return batch
+    }
 
-    suspend fun loadMore(): SearchBatch =
-        withContext(Dispatchers.IO) {
-            val page = nextPage ?: return@withContext SearchBatch(emptyList(), false)
+    suspend fun loadMore(): SearchBatch {
+        val page = nextPage ?: return SearchBatch(emptyList(), false)
+        val (batch, next) = withExtractorContext {
             val result = extractor.getPage(page)
-            nextPage = if (result.hasNextPage()) result.nextPage else null
-            SearchBatch(videos = result.items.videos(), hasMore = hasMore)
+            val next = if (result.hasNextPage()) result.nextPage else null
+            SearchBatch(videos = result.items.videos(), hasMore = next != null) to next
         }
+        nextPage = next
+        return batch
+    }
 }
 
 class YouTubeChannelTabSession internal constructor(
@@ -320,28 +339,62 @@ class YouTubeChannelTabSession internal constructor(
     val hasMore: Boolean
         get() = nextPage != null
 
-    suspend fun first(): ChannelTabBatch =
-        withContext(Dispatchers.IO) {
+    suspend fun first(): ChannelTabBatch {
+        val (batch, next) = withExtractorContext {
             extractor.fetchPage()
             val page = extractor.initialPage
-            nextPage = if (page.hasNextPage()) page.nextPage else null
-            page.toBatch()
+            val next = if (page.hasNextPage()) page.nextPage else null
+            page.toBatch(next != null) to next
         }
+        nextPage = next
+        return batch
+    }
 
-    suspend fun loadMore(): ChannelTabBatch =
-        withContext(Dispatchers.IO) {
-            val page = nextPage ?: return@withContext ChannelTabBatch(hasMore = false)
+    suspend fun loadMore(): ChannelTabBatch {
+        val page = nextPage ?: return ChannelTabBatch(hasMore = false)
+        val (batch, next) = withExtractorContext {
             val result = extractor.getPage(page)
-            nextPage = if (result.hasNextPage()) result.nextPage else null
-            result.toBatch()
+            val next = if (result.hasNextPage()) result.nextPage else null
+            result.toBatch(next != null) to next
         }
+        nextPage = next
+        return batch
+    }
 
-    private fun InfoItemsPage<InfoItem>.toBatch(): ChannelTabBatch =
+    private fun InfoItemsPage<InfoItem>.toBatch(hasMore: Boolean): ChannelTabBatch =
         ChannelTabBatch(
             videos = items.videos(),
             playlists = items.playlists(),
             hasMore = hasMore,
         )
+}
+
+class YouTubePlaylistSession internal constructor(
+    private val extractor: PlaylistExtractor,
+) {
+    private var nextPage: Page? = null
+
+    suspend fun first(): SearchBatch {
+        val (batch, next) = withExtractorContext {
+            extractor.fetchPage()
+            val page = extractor.initialPage
+            val next = if (page.hasNextPage()) page.nextPage else null
+            SearchBatch(page.items.videos(), next != null) to next
+        }
+        nextPage = next
+        return batch
+    }
+
+    suspend fun loadMore(): SearchBatch {
+        val page = nextPage ?: return SearchBatch(emptyList(), false)
+        val (batch, next) = withExtractorContext {
+            val result = extractor.getPage(page)
+            val next = if (result.hasNextPage()) result.nextPage else null
+            SearchBatch(result.items.videos(), next != null) to next
+        }
+        nextPage = next
+        return batch
+    }
 }
 
 class ChannelPage internal constructor(

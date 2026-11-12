@@ -101,6 +101,50 @@ class SubscriptionsStoreTest {
     }
 
     @Test
+    fun notificationModeSurvivesReopenAndProfileUpdates() = runBlocking {
+        val store = SubscriptionsStore(file)
+        store.subscribe(one, "One", null, now = 1_000L)
+        store.setNotificationMode(one.key, SubscriptionNotificationMode.All, now = 2_000L)
+        store.updateProfile(one.key, "One updated", null)
+        store.subscribe(one, "One updated", null, now = 3_000L)
+
+        val entry = SubscriptionsStore(file).snapshot().channels.single()
+        assertEquals(SubscriptionNotificationMode.All, entry.notificationMode)
+        assertEquals(1_000L, entry.notificationsEnabledAtEpochMillis)
+        assertEquals(1_000L, entry.addedAtEpochMillis)
+    }
+
+    @Test
+    fun reEnablingNotificationsDoesNotReplayMutedUploads() = runBlocking {
+        val store = SubscriptionsStore(file)
+        store.subscribe(one, "One", null, now = 1_000L)
+        store.setNotificationMode(one.key, SubscriptionNotificationMode.None, now = 2_000L)
+        store.setNotificationMode(one.key, SubscriptionNotificationMode.All, now = 5_000L)
+        store.setNotificationMode(one.key, SubscriptionNotificationMode.All, now = 6_000L)
+
+        val entry = store.snapshot().channels.single()
+        assertEquals(5_000L, entry.notificationsEnabledAtEpochMillis)
+        assertEquals(SubscriptionNotificationMode.All, entry.notificationMode)
+    }
+
+    @Test
+    fun changingNotificationsDoesNotRestoreAnUnsubscribedChannel() = runBlocking {
+        val store = SubscriptionsStore(file)
+        store.subscribe(one, "One", null, now = 1_000L)
+        store.unsubscribe(one.key)
+        store.setNotificationMode(one.key, SubscriptionNotificationMode.All)
+        assertTrue(store.snapshot().channels.isEmpty())
+    }
+
+    @Test
+    fun existingSubscriptionsDefaultToPersonalized() = runBlocking {
+        file.writeText("""{"v":1,"channels":[{"key":"@eram","url":"https://www.youtube.com/@eram","name":"ERAM","addedAt":1000}]}""")
+        val entry = SubscriptionsStore(file).snapshot().channels.single()
+        assertEquals(SubscriptionNotificationMode.Personalized, entry.notificationMode)
+        assertEquals(1_000L, entry.notificationsEnabledAtEpochMillis)
+    }
+
+    @Test
     fun ignoresAFileFromAnUnknownSchema() = runBlocking {
         file.writeText("""{"v":99,"channels":[{"key":"@x","url":"https://www.youtube.com/@x","name":"X"}]}""")
         assertTrue(SubscriptionsStore(file).snapshot().channels.isEmpty())

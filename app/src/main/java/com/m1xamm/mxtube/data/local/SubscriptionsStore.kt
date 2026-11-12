@@ -60,6 +60,8 @@ class SubscriptionsStore internal constructor(private val file: File) {
                     name = name.ifBlank { previous?.name.orEmpty() },
                     avatarUrl = avatarUrl ?: previous?.avatarUrl,
                     addedAtEpochMillis = previous?.addedAtEpochMillis ?: now,
+                    notificationMode = previous?.notificationMode ?: SubscriptionNotificationMode.Personalized,
+                    notificationsEnabledAtEpochMillis = previous?.notificationsEnabledAtEpochMillis ?: now,
                 )
             current.copy(
                 channels =
@@ -72,6 +74,29 @@ class SubscriptionsStore internal constructor(private val file: File) {
     suspend fun unsubscribe(key: String) {
         mutate { current ->
             current.copy(channels = current.channels.filterNot { it.key == key })
+        }
+    }
+
+    suspend fun setNotificationMode(
+        key: String,
+        mode: SubscriptionNotificationMode,
+        now: Long = System.currentTimeMillis(),
+    ) {
+        mutate { current ->
+            current.copy(
+                channels = current.channels.map { entry ->
+                    if (entry.key != key || entry.notificationMode == mode) {
+                        entry
+                    } else {
+                        entry.copy(
+                            notificationMode = mode,
+                            notificationsEnabledAtEpochMillis =
+                                if (entry.notificationMode == SubscriptionNotificationMode.None) now
+                                else entry.notificationsEnabledAtEpochMillis,
+                        )
+                    }
+                },
+            )
         }
     }
 
@@ -153,6 +178,12 @@ class SubscriptionsStore internal constructor(private val file: File) {
                                     name = item.optString("name"),
                                     avatarUrl = item.optString("avatar").takeIf { it.isNotBlank() },
                                     addedAtEpochMillis = item.optLong("addedAt"),
+                                    notificationMode =
+                                        SubscriptionNotificationMode.entries.firstOrNull {
+                                            it.storageValue == item.optString("notifications")
+                                        } ?: SubscriptionNotificationMode.Personalized,
+                                    notificationsEnabledAtEpochMillis =
+                                        item.optLong("notificationsEnabledAt", item.optLong("addedAt")),
                                 ),
                             )
                         }
@@ -182,6 +213,8 @@ class SubscriptionsStore internal constructor(private val file: File) {
                                         put("name", entry.name)
                                         put("avatar", entry.avatarUrl.orEmpty())
                                         put("addedAt", entry.addedAtEpochMillis)
+                                        put("notifications", entry.notificationMode.storageValue)
+                                        put("notificationsEnabledAt", entry.notificationsEnabledAtEpochMillis)
                                     },
                                 )
                             }
