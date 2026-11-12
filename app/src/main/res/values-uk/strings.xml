@@ -33,7 +33,9 @@
     <string name="subscription_notifications_blocked">Сповіщення вимкнено в налаштуваннях Android.</string>
     <string name="subscription_notifications_settings">Увімкнути сповіщення</string>
     <string name="subscription_error">Не вдалося підписатися. Спробуй ще раз.</string>
-    <string name="channel_profile">Канал</string>
+    <string name="channel_search">Пошук каналом</string>
+    <string name="channel_lives">Трансляції</string>
+    <string name="channel_posts">Пости</string>
     <string name="channel_about">Про канал</string>
     <string name="channel_open">Перейти на канал</string>
     <string name="channel_videos">Відео</string>

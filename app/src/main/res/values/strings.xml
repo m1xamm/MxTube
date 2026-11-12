@@ -33,7 +33,9 @@
     <string name="subscription_notifications_blocked">Notifications are turned off in Android settings.</string>
     <string name="subscription_notifications_settings">Enable notifications</string>
     <string name="subscription_error">Could not subscribe. Try again.</string>
-    <string name="channel_profile">Channel</string>
+    <string name="channel_search">Channel search</string>
+    <string name="channel_lives">Live</string>
+    <string name="channel_posts">Posts</string>
     <string name="channel_about">About this channel</string>
     <string name="channel_open">View channel</string>
     <string name="channel_videos">Videos</string>

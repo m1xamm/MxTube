@@ -57,7 +57,7 @@ class ChannelViewModelTest {
         val state = model.awaitState { it.header != null && !it.isLoadingVideos }
         assertEquals("Channel", state.header?.name)
         assertEquals(1200L, state.header?.subscriberCount)
-        assertEquals(listOf(ChannelProfileTab.Home), state.availableTabs)
+        assertEquals(listOf(ChannelProfileTab.Home, ChannelProfileTab.Shorts, ChannelProfileTab.Lives, ChannelProfileTab.Posts), state.availableTabs)
         model.selectTab(ChannelProfileTab.Videos)
         assertEquals(ChannelProfileTab.Home, model.uiState.value.selectedTab)
         assertTrue(state.videos.isEmpty())
@@ -136,7 +136,7 @@ class ChannelViewModelTest {
             },
         ) { page("Channel", ChannelTabs.VIDEOS, ChannelTabs.PLAYLISTS) })
         val state = model.awaitState { it.header != null && !it.isLoadingVideos && !it.isLoadingPlaylists }
-        assertEquals(listOf(ChannelProfileTab.Home, ChannelProfileTab.Videos, ChannelProfileTab.Playlists), state.availableTabs)
+        assertEquals(listOf(ChannelProfileTab.Home, ChannelProfileTab.Videos, ChannelProfileTab.Shorts, ChannelProfileTab.Lives, ChannelProfileTab.Playlists, ChannelProfileTab.Posts), state.availableTabs)
         assertEquals(1, state.videos.size)
         assertEquals(1, state.playlists.size)
         assertEquals("Channel", state.videos.single().uploader)

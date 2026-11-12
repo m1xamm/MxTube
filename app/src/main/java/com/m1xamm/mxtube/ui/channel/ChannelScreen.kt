@@ -42,15 +42,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ToggleButtonDefaults
+import androidx.compose.material3.ToggleButtonSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -69,6 +73,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.LinkAnnotation
@@ -124,8 +131,15 @@ fun ChannelScreen(
     val homeList = rememberLazyListState()
     val videosList = rememberLazyListState()
     val playlistsList = rememberLazyListState()
+    val shortsList = rememberLazyListState()
+    val livesList = rememberLazyListState()
+    val postsList = rememberLazyListState()
+    val tabRowState = rememberLazyListState()
+    val pinnedTabRowState = rememberLazyListState()
     var menuOpen by remember { mutableStateOf(false) }
     var aboutOpen by remember { mutableStateOf(false) }
+    var searchOpen by remember { mutableStateOf(false) }
+    var overflowOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
     var notificationsEnabled by remember { mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled()) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -157,9 +171,21 @@ fun ChannelScreen(
         ChannelProfileTab.Home -> homeList
         ChannelProfileTab.Videos -> videosList
         ChannelProfileTab.Playlists -> playlistsList
+        ChannelProfileTab.Shorts -> shortsList
+        ChannelProfileTab.Lives -> livesList
+        ChannelProfileTab.Posts -> postsList
     }
-    val showToolbarTitle by remember { derivedStateOf { activeList.firstVisibleItemIndex > 1 } }
+    val tabsIndex = (if (header?.bannerUrl?.isNotBlank() == true) 1 else 0) + 1
+    val scrolledPastHeader by remember { derivedStateOf { activeList.firstVisibleItemIndex >= tabsIndex } }
     val tabsVisible = state.selectedPlaylist == null && state.availableTabs.size > 1
+    val pinnedTabs = tabsVisible && header != null && scrolledPastHeader
+    LaunchedEffect(pinnedTabs) {
+        if (pinnedTabs) {
+            pinnedTabRowState.scrollToItem(tabRowState.firstVisibleItemIndex, tabRowState.firstVisibleItemScrollOffset)
+        } else {
+            tabRowState.scrollToItem(pinnedTabRowState.firstVisibleItemIndex, pinnedTabRowState.firstVisibleItemScrollOffset)
+        }
+    }
     val shareUrl = state.selectedPlaylist?.url ?: header?.url
     val onShare: () -> Unit = {
         shareUrl?.takeIf { it.startsWith("https://") || it.startsWith("http://") }?.let { url ->
@@ -194,14 +220,23 @@ fun ChannelScreen(
             }
         } else {
             when (state.selectedTab) {
-                ChannelProfileTab.Home -> ChannelList(homeList, state, haze, miniPlayer != null, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe) {
+                ChannelProfileTab.Home -> ChannelList(homeList, state, haze, miniPlayer != null, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
                     homeContent(state, onVideoClick, viewModel::openPlaylist, viewModel::selectTab, viewModel::retryVideos, viewModel::retryPlaylists)
                 }
-                ChannelProfileTab.Videos -> ChannelList(videosList, state, haze, miniPlayer != null, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe) {
+                ChannelProfileTab.Videos -> ChannelList(videosList, state, haze, miniPlayer != null, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
                     videosContent(state, onVideoClick, viewModel::retryVideos)
                 }
-                ChannelProfileTab.Playlists -> ChannelList(playlistsList, state, haze, miniPlayer != null, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe) {
+                ChannelProfileTab.Playlists -> ChannelList(playlistsList, state, haze, miniPlayer != null, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
                     playlistsContent(state, viewModel::openPlaylist, viewModel::retryPlaylists)
+                }
+                ChannelProfileTab.Shorts -> ChannelList(shortsList, state, haze, miniPlayer != null, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
+                    item(key = "shorts_soon") { EmptyItem(stringResource(R.string.section_soon)) }
+                }
+                ChannelProfileTab.Lives -> ChannelList(livesList, state, haze, miniPlayer != null, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
+                    item(key = "lives_soon") { EmptyItem(stringResource(R.string.section_soon)) }
+                }
+                ChannelProfileTab.Posts -> ChannelList(postsList, state, haze, miniPlayer != null, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
+                    item(key = "posts_soon") { EmptyItem(stringResource(R.string.section_soon)) }
                 }
             }
         }
@@ -220,46 +255,46 @@ fun ChannelScreen(
                 }
                 Text(
                     text = selectedPlaylist?.name
-                        ?: if (showToolbarTitle) header?.name.orEmpty() else stringResource(R.string.channel_profile),
+                        ?: if (scrolledPastHeader) header?.name.orEmpty() else "",
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.titleSmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (shareUrl != null) {
-                    IconButton(onClick = onShare) {
-                        Icon(painterResource(R.drawable.ic_share_rounded), stringResource(R.string.channel_share), Modifier.size(24.dp))
-                    }
+                IconButton(onClick = { searchOpen = true }) {
+                    Icon(painterResource(R.drawable.ic_search_rounded), stringResource(R.string.channel_search), Modifier.size(24.dp))
                 }
-                IconButton(onClick = viewModel::refresh, enabled = !state.isLoading && !state.isRefreshing) {
-                    Icon(painterResource(R.drawable.ic_refresh_rounded), stringResource(R.string.channel_refresh), Modifier.size(24.dp))
+                Box {
+                    IconButton(onClick = { overflowOpen = true }) {
+                        Icon(painterResource(R.drawable.ic_more_vert_rounded), stringResource(R.string.channel_more), Modifier.size(24.dp))
+                    }
+                    DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }) {
+                        if (shareUrl != null) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.channel_share)) },
+                                leadingIcon = { Icon(painterResource(R.drawable.ic_share_rounded), null, Modifier.size(24.dp)) },
+                                onClick = { overflowOpen = false; onShare() },
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.channel_refresh)) },
+                            leadingIcon = { Icon(painterResource(R.drawable.ic_refresh_rounded), null, Modifier.size(24.dp)) },
+                            enabled = !state.isLoading && !state.isRefreshing,
+                            onClick = { overflowOpen = false; viewModel.refresh() },
+                        )
+                        if (header != null) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.channel_about)) },
+                                leadingIcon = { Icon(painterResource(R.drawable.ic_info_rounded), null, Modifier.size(24.dp)) },
+                                onClick = { overflowOpen = false; aboutOpen = true },
+                            )
+                        }
+                    }
                 }
             }
-            if (tabsVisible) {
-                PrimaryTabRow(
-                    selectedTabIndex = state.availableTabs.indexOf(state.selectedTab).coerceAtLeast(0),
-                    containerColor = MaterialTheme.colorScheme.background,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                ) {
-                    state.availableTabs.forEach { tab ->
-                        Tab(
-                            selected = state.selectedTab == tab,
-                            onClick = { viewModel.selectTab(tab) },
-                            text = {
-                                Text(
-                                    text = stringResource(
-                                        when (tab) {
-                                            ChannelProfileTab.Home -> R.string.channel_home
-                                            ChannelProfileTab.Videos -> R.string.channel_videos
-                                            ChannelProfileTab.Playlists -> R.string.channel_playlists
-                                        },
-                                    ),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            },
-                        )
-                    }
+            if (pinnedTabs) {
+                Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
+                    ChannelTabGroup(state, viewModel::selectTab, pinnedTabRowState)
                 }
             }
         }
@@ -285,6 +320,58 @@ fun ChannelScreen(
                 AboutContent(header.name, header.handle, header.description)
             }
         }
+        if (searchOpen) {
+            GlassBottomSheet(hazeState = haze, title = stringResource(R.string.channel_search), onDismiss = { searchOpen = false }) { _ ->
+                Text(stringResource(R.string.section_soon), Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChannelTabGroup(state: ChannelUiState, onSelectTab: (ChannelProfileTab) -> Unit, listState: androidx.compose.foundation.lazy.LazyListState) {
+    LazyRow(
+        state = listState,
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+    ) {
+        itemsIndexed(state.availableTabs, key = { _, tab -> tab }) { index, tab ->
+            ToggleButton(
+                checked = state.selectedTab == tab,
+                onCheckedChange = { onSelectTab(tab) },
+                buttonSize = ToggleButtonSize.Small,
+                shapes =
+                    when (index) {
+                        0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                        state.availableTabs.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                        else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                    },
+                colors =
+                    ToggleButtonDefaults.colors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        checkedContainerColor = MaterialTheme.colorScheme.primary,
+                        checkedContentColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
+                elevation = null,
+                modifier = Modifier.semantics { role = Role.RadioButton },
+            ) {
+                Text(
+                    text = stringResource(
+                        when (tab) {
+                            ChannelProfileTab.Home -> R.string.channel_home
+                            ChannelProfileTab.Videos -> R.string.channel_videos
+                            ChannelProfileTab.Shorts -> R.string.nav_shorts
+                            ChannelProfileTab.Lives -> R.string.channel_lives
+                            ChannelProfileTab.Playlists -> R.string.channel_playlists
+                            ChannelProfileTab.Posts -> R.string.channel_posts
+                        },
+                    ),
+                    maxLines = 1,
+                )
+            }
+        }
     }
 }
 
@@ -298,6 +385,8 @@ private fun ChannelList(
     onRetryMetadata: () -> Unit,
     onAbout: () -> Unit,
     onSubscribe: () -> Unit,
+    onSelectTab: (ChannelProfileTab) -> Unit,
+    tabRowState: androidx.compose.foundation.lazy.LazyListState,
     content: LazyListScope.() -> Unit,
 ) {
     val nearEnd by remember { derivedStateOf {
@@ -318,7 +407,7 @@ private fun ChannelList(
         modifier = Modifier.fillMaxSize().hazeSource(haze).windowInsetsPadding(
             WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
         ),
-        contentPadding = PaddingValues(top = if (tabsVisible) 120.dp else 72.dp, bottom = if (hasMiniPlayer) 96.dp else 32.dp),
+        contentPadding = PaddingValues(top = 72.dp, bottom = if (hasMiniPlayer) 96.dp else 32.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         if (banner != null) {
@@ -333,6 +422,9 @@ private fun ChannelList(
         }
         if (header != null) {
             item(key = "header") { ChannelHeaderContent(header, state, onAbout, onSubscribe) }
+        }
+        if (tabsVisible) {
+            item(key = "tabs") { ChannelTabGroup(state, onSelectTab, tabRowState) }
         }
         if (state.isLoading) {
             item(key = "metadata_loading") { LoadingItem() }

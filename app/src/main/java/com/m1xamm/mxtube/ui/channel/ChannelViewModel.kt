@@ -25,7 +25,7 @@ import kotlinx.coroutines.launch
 import org.schabi.newpipe.extractor.channel.tabs.ChannelTabs
 
 
-enum class ChannelProfileTab { Home, Videos, Playlists }
+enum class ChannelProfileTab { Home, Videos, Shorts, Lives, Playlists, Posts }
 
 internal interface ChannelContentSession {
     suspend fun first(): ChannelTabBatch
@@ -148,7 +148,10 @@ class ChannelViewModel internal constructor(
                 val tabs = buildList {
                     add(ChannelProfileTab.Home)
                     if (ChannelTabs.VIDEOS in loaded.availableTabs) add(ChannelProfileTab.Videos)
+                    add(ChannelProfileTab.Shorts)
+                    add(ChannelProfileTab.Lives)
                     if (ChannelTabs.PLAYLISTS in loaded.availableTabs) add(ChannelProfileTab.Playlists)
+                    add(ChannelProfileTab.Posts)
                 }
                 state.update {
                     val selected = it.selectedTab.takeIf(tabs::contains) ?: ChannelProfileTab.Home
@@ -160,8 +163,8 @@ class ChannelViewModel internal constructor(
                         isRefreshing = false,
                         videos = if (ChannelProfileTab.Videos in tabs) it.videos else emptyList(),
                         playlists = if (ChannelProfileTab.Playlists in tabs) it.playlists else emptyList(),
-                        isLoadingVideos = ChannelProfileTab.Videos in tabs && selected != ChannelProfileTab.Playlists,
-                        isLoadingPlaylists = ChannelProfileTab.Playlists in tabs && selected != ChannelProfileTab.Videos,
+                        isLoadingVideos = ChannelProfileTab.Videos in tabs && selected in listOf(ChannelProfileTab.Home, ChannelProfileTab.Videos),
+                        isLoadingPlaylists = ChannelProfileTab.Playlists in tabs && selected in listOf(ChannelProfileTab.Home, ChannelProfileTab.Playlists),
                     )
                 }
                 subscriptions.updateProfile(loaded.header.key, loaded.header.name, loaded.header.avatarUrl)
@@ -193,10 +196,10 @@ class ChannelViewModel internal constructor(
 
     private fun ensureSelectedContent() {
         val current = state.value
-        if (current.selectedTab != ChannelProfileTab.Playlists && ChannelProfileTab.Videos in current.availableTabs) {
+        if (current.selectedTab in listOf(ChannelProfileTab.Home, ChannelProfileTab.Videos) && ChannelProfileTab.Videos in current.availableTabs) {
             loadVideos()
         }
-        if (current.selectedTab != ChannelProfileTab.Videos && ChannelProfileTab.Playlists in current.availableTabs) {
+        if (current.selectedTab in listOf(ChannelProfileTab.Home, ChannelProfileTab.Playlists) && ChannelProfileTab.Playlists in current.availableTabs) {
             loadPlaylists()
         }
     }
@@ -276,6 +279,7 @@ class ChannelViewModel internal constructor(
                 if (current.videos.isEmpty() && !current.isLoadingVideos && !current.isLoadingMore && !current.videosError) loadVideos(more = true)
                 if (current.playlists.isEmpty() && !current.isLoadingPlaylists && !current.isLoadingMorePlaylists && !current.playlistsError) loadPlaylists(more = true)
             }
+            ChannelProfileTab.Shorts, ChannelProfileTab.Lives, ChannelProfileTab.Posts -> {}
         }
     }
 
