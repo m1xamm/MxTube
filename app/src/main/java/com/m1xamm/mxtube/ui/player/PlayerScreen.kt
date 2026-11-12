@@ -4,10 +4,12 @@ package com.m1xamm.mxtube.ui.player
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.view.LayoutInflater
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -61,10 +63,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
@@ -99,16 +99,22 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.C
@@ -130,6 +136,7 @@ import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import com.m1xamm.mxtube.MxTubeApplication
 import com.m1xamm.mxtube.R
+import com.m1xamm.mxtube.data.local.SubscriptionNotificationMode
 import com.m1xamm.mxtube.data.local.SubscriptionsStore
 import com.m1xamm.mxtube.data.local.UserPreferences
 import com.m1xamm.mxtube.data.network.Http
@@ -138,8 +145,10 @@ import com.m1xamm.mxtube.data.youtube.PlaybackInfo
 import com.m1xamm.mxtube.data.youtube.PlaybackQuality
 import com.m1xamm.mxtube.data.youtube.PlaybackSubtitle
 import com.m1xamm.mxtube.data.youtube.VideoSummary
+import com.m1xamm.mxtube.notifications.SubscriptionNotificationScheduler
 import com.m1xamm.mxtube.playback.PlaybackHolder
 import com.m1xamm.mxtube.playback.PlaybackService
+import com.m1xamm.mxtube.ui.common.clusterCardColor
 import com.m1xamm.mxtube.ui.common.clusterInnerColor
 import com.m1xamm.mxtube.ui.common.findActivity
 import com.m1xamm.mxtube.ui.common.compactCount
@@ -169,6 +178,7 @@ fun PlayerScreen(
     related: List<VideoSummary>,
     onRelatedClick: (VideoSummary) -> Unit,
     onBack: () -> Unit,
+    onChannelClick: (String) -> Unit,
     onWatchProgress: (Long) -> Unit = {},
     startFullscreen: Boolean = false,
     onFullscreenChanged: (Boolean) -> Unit = {},
@@ -195,10 +205,37 @@ fun PlayerScreen(
     val darkTheme = isSystemInDarkTheme()
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
+    var notificationsEnabled by remember {
+        mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled())
+    }
     val notificationPermission =
-        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            notificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
+            if (granted) SubscriptionNotificationScheduler.requestCheck(context)
+        }
+    val requestNotifications: () -> Unit = {
+        if (!notificationsEnabled) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                context.startActivity(
+                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                        .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
+                )
+            }
+        }
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        val enabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
+        if (enabled && !notificationsEnabled) SubscriptionNotificationScheduler.requestCheck(context)
+        notificationsEnabled = enabled
+    }
     val exoPlayer = remember(context) { PlaybackHolder.player(context) }
 
+    var subscriptionMenuOpen by rememberSaveable { mutableStateOf(false) }
     var isFullscreen by rememberSaveable { mutableStateOf(startFullscreen) }
     var relatedOverlayOpen by rememberSaveable { mutableStateOf(false) }
     var hasEnteredFullscreen by remember { mutableStateOf(isFullscreen) }
@@ -217,7 +254,9 @@ fun PlayerScreen(
     var hasSource by remember { mutableStateOf(false) }
 
     val handleBack: () -> Unit = {
-        if (settingsOpen) {
+        if (subscriptionMenuOpen) {
+            subscriptionMenuOpen = false
+        } else if (settingsOpen) {
             settingsOpen = false
         } else if (relatedOverlayOpen) {
             relatedOverlayOpen = false
@@ -247,15 +286,6 @@ fun PlayerScreen(
 
     LaunchedEffect(Unit) {
         PlaybackService.start(context)
-        if (
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.POST_NOTIFICATIONS,
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
     }
 
     LaunchedEffect(Unit) {
@@ -560,12 +590,36 @@ fun PlayerScreen(
                                 onRelatedClick = onRelatedClick,
                                 isSubscribed = state.isSubscribed,
                                 isSubscribePending = state.isSubscribePending,
-                                onSubscribe = viewModel::subscribe,
-                                onUnsubscribe = viewModel::unsubscribe,
+                                notificationMode = state.notificationMode,
+                                subscriptionError = state.subscriptionError,
+                                onChannelClick = onChannelClick,
+                                onSubscribe = {
+                                    viewModel.subscribe()
+                                    requestNotifications()
+                                },
+                                onManageSubscription = {
+                                    controlsVisible = false
+                                    subscriptionMenuOpen = true
+                                },
                                 modifier = Modifier.weight(1f),
                             )
                         }
                     }
+                }
+
+                if (subscriptionMenuOpen) {
+                    SubscriptionMenuSheet(
+                        mode = state.notificationMode,
+                        hazeState = settingsHazeState,
+                        notificationsEnabled = notificationsEnabled,
+                        onEnableNotifications = requestNotifications,
+                        onModeSelected = { mode ->
+                            viewModel.setNotificationMode(mode)
+                            if (mode != SubscriptionNotificationMode.None) requestNotifications()
+                        },
+                        onUnsubscribe = viewModel::unsubscribe,
+                        onDismiss = { subscriptionMenuOpen = false },
+                    )
                 }
 
                 if (settingsOpen) {
@@ -1361,11 +1415,13 @@ private fun PlayerDetails(
     onRelatedClick: (VideoSummary) -> Unit,
     isSubscribed: Boolean,
     isSubscribePending: Boolean,
+    notificationMode: SubscriptionNotificationMode,
+    subscriptionError: Boolean,
+    onChannelClick: (String) -> Unit,
     onSubscribe: () -> Unit,
-    onUnsubscribe: () -> Unit,
+    onManageSubscription: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var confirmUnsubscribe by remember { mutableStateOf(false) }
     val channelName = info.uploader.ifBlank { stringResource(R.string.unknown_channel) }
     val views = if (info.viewCount >= 0) viewsText(info.viewCount) else ""
     val uploaded = info.uploadedAtEpochMillis?.let { formatRelativeDate(it) }.orEmpty()
@@ -1404,33 +1460,55 @@ private fun PlayerDetails(
 
                 Spacer(Modifier.height(12.dp))
 
-                Row(
+                Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    shape = RoundedCornerShape(28.dp),
+                    color = clusterCardColor(),
                 ) {
-                    ChannelAvatar(
-                        url = info.uploaderAvatarUrl,
-                        name = channelName,
-                    )
+                    Row(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Row(
+                            modifier =
+                                Modifier.weight(1f).clip(RoundedCornerShape(20.dp))
+                                    .then(
+                                        info.uploaderUrl?.let { url ->
+                                            Modifier.clickable { onChannelClick(url) }
+                                        } ?: Modifier,
+                                    ),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            ChannelAvatar(url = info.uploaderAvatarUrl, name = channelName)
+                            Text(
+                                text = channelName,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        SubscribeButton(
+                            subscribed = isSubscribed,
+                            pending = isSubscribePending,
+                            notificationMode = notificationMode,
+                            channelName = channelName,
+                            onClick = if (isSubscribed) onManageSubscription else onSubscribe,
+                        )
+                    }
+                }
+                if (subscriptionError) {
                     Text(
-                        text = channelName,
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    SubscribeButton(
-                        subscribed = isSubscribed,
-                        pending = isSubscribePending,
-                        onClick = {
-                            if (isSubscribed) {
-                                confirmUnsubscribe = true
-                            } else {
-                                onSubscribe()
-                            }
-                        },
+                        text = stringResource(R.string.subscription_error),
+                        modifier = Modifier.padding(top = 8.dp),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
                     )
                 }
             }
@@ -1455,28 +1533,6 @@ private fun PlayerDetails(
         }
     }
 
-    if (confirmUnsubscribe) {
-        AlertDialog(
-            onDismissRequest = { confirmUnsubscribe = false },
-            title = { Text(stringResource(R.string.unsubscribe_title)) },
-            text = { Text(stringResource(R.string.unsubscribe_message, channelName)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        confirmUnsubscribe = false
-                        onUnsubscribe()
-                    },
-                ) {
-                    Text(stringResource(R.string.unsubscribe_confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmUnsubscribe = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            },
-        )
-    }
 }
 
 @Composable
@@ -1514,36 +1570,60 @@ private fun ChannelAvatar(
 private fun SubscribeButton(
     subscribed: Boolean,
     pending: Boolean,
+    notificationMode: SubscriptionNotificationMode,
+    channelName: String,
     onClick: () -> Unit,
 ) {
-    val pill = CircleShape
-    FilledTonalButton(
+    val description = stringResource(R.string.subscription_manage, channelName)
+    val modeLabel = subscriptionNotificationLabel(notificationMode)
+    Button(
         onClick = onClick,
         enabled = !pending,
-        shape = pill,
-        modifier = Modifier.heightIn(min = 36.dp),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
-        colors =
-            ButtonDefaults.filledTonalButtonColors(
-                containerColor =
+        shape = CircleShape,
+        modifier =
+            Modifier
+                .heightIn(min = 36.dp)
+                .then(
                     if (subscribed) {
-                        MaterialTheme.colorScheme.surfaceContainerHigh
-                    } else {
-                        MaterialTheme.colorScheme.secondaryContainer
-                    },
-                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            ),
-    ) {
-        Text(
-            text =
-                stringResource(
-                    if (subscribed) R.string.subscribed else R.string.subscribe,
+                        Modifier.semantics {
+                            contentDescription = description
+                            stateDescription = modeLabel
+                        }
+                    } else Modifier,
                 ),
-            style = MaterialTheme.typography.labelLarge,
-            maxLines = 1,
-        )
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+        colors =
+            if (subscribed) {
+                ButtonDefaults.filledTonalButtonColors(
+                    disabledContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    disabledContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            } else {
+                ButtonDefaults.buttonColors(
+                    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+    ) {
+        if (subscribed) {
+            Icon(
+                painter = painterResource(subscriptionNotificationIcon(notificationMode)),
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+            )
+            Spacer(Modifier.width(4.dp))
+            Icon(
+                painter = painterResource(R.drawable.ic_expand_more_rounded),
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+            )
+        } else {
+            Text(
+                text = stringResource(R.string.subscribe),
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+            )
+        }
     }
 }
 

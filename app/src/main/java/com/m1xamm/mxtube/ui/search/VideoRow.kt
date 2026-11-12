@@ -49,6 +49,7 @@ fun VideoRow(
     modifier: Modifier = Modifier,
     topCorner: Dp = 28.dp,
     bottomCorner: Dp = 28.dp,
+    showUploader: Boolean = true,
 ) {
     val placeholderColor = clusterInnerColor()
     val placeholder = ColorPainter(placeholderColor)
@@ -151,15 +152,16 @@ fun VideoRow(
                     overflow = TextOverflow.Ellipsis,
                 )
 
-                Spacer(Modifier.height(6.dp))
-
-                Text(
-                    text = channel,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                if (showUploader) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = channel,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
 
                 if (meta.isNotBlank()) {
                     Spacer(Modifier.height(4.dp))

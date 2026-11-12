@@ -1,8 +1,12 @@
 package com.m1xamm.mxtube.theme
 
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
+
+internal fun lightSurfaceColors(colors: ColorScheme): ColorScheme =
+    colors.copy(background = colors.surfaceDim)
 
 internal val LightColors =
     lightColorScheme(

@@ -18,12 +18,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,6 +35,8 @@ import com.m1xamm.mxtube.data.home.HomeTopics
 import com.m1xamm.mxtube.data.youtube.VideoSummary
 import com.m1xamm.mxtube.playback.PlaybackHolder
 import com.m1xamm.mxtube.playback.PlaybackService
+import com.m1xamm.mxtube.ui.channel.ChannelScreen
+import com.m1xamm.mxtube.ui.channel.ChannelViewModel
 import com.m1xamm.mxtube.ui.home.HomeViewModel
 import com.m1xamm.mxtube.ui.nav.MainTab
 import com.m1xamm.mxtube.ui.nav.MxBottomNav
@@ -41,18 +45,27 @@ import com.m1xamm.mxtube.ui.player.PlayerScreen
 import com.m1xamm.mxtube.ui.search.SearchScreen
 import com.m1xamm.mxtube.ui.search.SearchViewModel
 import com.m1xamm.mxtube.ui.settings.SettingsScreen
+import com.m1xamm.mxtube.ui.subscriptions.SubscriptionsScreen
+import com.m1xamm.mxtube.ui.subscriptions.SubscriptionsViewModel
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.launch
 
 @Composable
-fun MxTubeApp() {
+fun MxTubeApp(
+    notificationVideo: VideoSummary? = null,
+    onNotificationConsumed: () -> Unit = {},
+) {
     var selectedVideo by remember { mutableStateOf<VideoSummary?>(null) }
     var shownVideo by remember { mutableStateOf<VideoSummary?>(null) }
     var playerRelated by remember { mutableStateOf<List<VideoSummary>>(emptyList()) }
     var selectedTab by rememberSaveable { mutableStateOf(MainTab.Home) }
     var isSearchActive by remember { mutableStateOf(false) }
     var playerFullscreen by rememberSaveable { mutableStateOf(false) }
+    var selectedChannelUrl by rememberSaveable { mutableStateOf<String?>(null) }
+    var shownChannelUrl by remember { mutableStateOf(selectedChannelUrl) }
+    var playerReturnChannel by rememberSaveable { mutableStateOf<String?>(null) }
+    val channelStateHolder = rememberSaveableStateHolder()
     val navHazeState = rememberHazeState()
     val context = LocalContext.current
     val application = context.applicationContext as MxTubeApplication
@@ -63,9 +76,30 @@ fun MxTubeApp() {
     val searchViewModel: SearchViewModel = viewModel { SearchViewModel(historyStore) }
     val homeListState = rememberLazyListState()
     val searchListState = rememberLazyListState()
-    val showNav = selectedVideo == null && !isSearchActive
+    val subscriptionsListState = rememberLazyListState()
+    val showNav = selectedVideo == null && selectedChannelUrl == null && !isSearchActive
+    val openChannel: (String) -> Unit = { url ->
+        shownChannelUrl = url
+        selectedChannelUrl = url
+    }
 
-    BackHandler(enabled = selectedTab != MainTab.Home && selectedVideo == null) {
+    LaunchedEffect(notificationVideo) {
+        notificationVideo?.let { video ->
+            historyStore.recordWatch(video, HomeTopics.topicsFor(null, video.title, video.uploader))
+            homeViewModel.onWatchRecorded()
+            selectedTab = MainTab.Subscriptions
+            isSearchActive = false
+            selectedChannelUrl = null
+            playerReturnChannel = null
+            playerRelated = emptyList()
+            playerFullscreen = false
+            shownVideo = video
+            selectedVideo = video
+            onNotificationConsumed()
+        }
+    }
+
+    BackHandler(enabled = selectedTab != MainTab.Home && selectedVideo == null && selectedChannelUrl == null) {
         selectedTab = MainTab.Home
     }
 
@@ -89,12 +123,36 @@ fun MxTubeApp() {
                                 homeViewModel.onWatchRecorded()
                             }
                             playerRelated = related.filter { it.url != video.url }.take(8)
+                            playerReturnChannel = null
                             playerFullscreen = false
                             shownVideo = video
                             selectedVideo = video
                         },
                         onSearchActiveChange = { isSearchActive = it },
                     )
+
+                MainTab.Subscriptions -> {
+                    val subscriptionsViewModel: SubscriptionsViewModel =
+                        viewModel {
+                            SubscriptionsViewModel(application.subscriptionsStore, application.subscriptionsFeedCache)
+                        }
+                    SubscriptionsScreen(
+                        viewModel = subscriptionsViewModel,
+                        listState = subscriptionsListState,
+                        onChannelClick = openChannel,
+                        onVideoClick = { video, related ->
+                            scope.launch {
+                                historyStore.recordWatch(video, HomeTopics.topicsFor(null, video.title, video.uploader))
+                                homeViewModel.onWatchRecorded()
+                            }
+                            playerRelated = related.filter { it.url != video.url }.take(8)
+                            playerReturnChannel = null
+                            playerFullscreen = false
+                            shownVideo = video
+                            selectedVideo = video
+                        },
+                    )
+                }
 
                 MainTab.Settings -> SettingsScreen()
 
@@ -153,6 +211,7 @@ fun MxTubeApp() {
                     PlayerScreen(
                         video = video,
                         related = playerRelated,
+                        onChannelClick = openChannel,
                         onRelatedClick = { next ->
                             scope.launch {
                                 historyStore.recordWatch(
@@ -170,6 +229,8 @@ fun MxTubeApp() {
                             PlaybackService.stop(context)
                             playerFullscreen = false
                             selectedVideo = null
+                            playerReturnChannel?.let(openChannel)
+                            playerReturnChannel = null
                             homeViewModel.onHomeVisible()
                         },
                         onWatchProgress = { positionMs ->
@@ -180,6 +241,48 @@ fun MxTubeApp() {
                         startFullscreen = playerFullscreen,
                         onFullscreenChanged = { playerFullscreen = it },
                         modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = selectedChannelUrl != null,
+            modifier = Modifier.fillMaxSize(),
+            enter = fadeIn(tween(180)) + slideInVertically(initialOffsetY = { it / 12 }),
+            exit = fadeOut(tween(140)),
+        ) {
+            shownChannelUrl?.let { url ->
+                channelStateHolder.SaveableStateProvider(url) {
+                    val channelViewModel: ChannelViewModel =
+                        viewModel(key = "channel:$url") { ChannelViewModel(url, application.subscriptionsStore) }
+                    ChannelScreen(
+                        viewModel = channelViewModel,
+                        onBack = { selectedChannelUrl = null },
+                        onVideoClick = { video, related ->
+                            scope.launch {
+                                historyStore.recordWatch(video, HomeTopics.topicsFor(null, video.title, video.uploader))
+                                homeViewModel.onWatchRecorded()
+                            }
+                            playerReturnChannel = url
+                            playerRelated = related.filter { it.url != video.url }.take(8)
+                            playerFullscreen = false
+                            shownVideo = video
+                            selectedVideo = video
+                            selectedChannelUrl = null
+                        },
+                        miniPlayer = selectedVideo,
+                        onReturnToPlayer = { selectedChannelUrl = null },
+                        onClosePlayer = {
+                            val playingVideo = selectedVideo
+                            val position = PlaybackHolder.player(context).currentPosition
+                            if (playingVideo != null) scope.launch { historyStore.updateWatchProgress(playingVideo.url, position) }
+                            PlaybackHolder.stop()
+                            PlaybackService.stop(context)
+                            playerFullscreen = false
+                            selectedVideo = null
+                            playerReturnChannel = null
+                        },
                     )
                 }
             }

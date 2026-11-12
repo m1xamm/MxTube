@@ -3,6 +3,7 @@ package com.m1xamm.mxtube.ui.player
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.m1xamm.mxtube.data.local.SubscriptionNotificationMode
 import com.m1xamm.mxtube.data.local.SubscriptionsStore
 import com.m1xamm.mxtube.data.youtube.ChannelIdentity
 import com.m1xamm.mxtube.data.youtube.ChannelRef
@@ -33,6 +34,8 @@ data class PlayerUiState(
     val uploaderKey: String? = null,
     val isSubscribed: Boolean = false,
     val isSubscribePending: Boolean = false,
+    val notificationMode: SubscriptionNotificationMode = SubscriptionNotificationMode.Personalized,
+    val subscriptionError: Boolean = false,
 )
 
 class PlayerViewModel(
@@ -62,34 +65,64 @@ class PlayerViewModel(
         load()
         viewModelScope.launch {
             combine(subscriptions.state, uploaderKey) { state, key ->
-                key != null && state.channels.any { it.key == key }
-            }.collect { subscribed ->
-                _uiState.update { it.copy(isSubscribed = subscribed) }
+                state.channels.firstOrNull { it.key == key }
+            }.collect { entry ->
+                _uiState.update {
+                    it.copy(
+                        isSubscribed = entry != null,
+                        notificationMode = entry?.notificationMode ?: SubscriptionNotificationMode.Personalized,
+                    )
+                }
             }
         }
     }
 
     fun subscribe() {
         val info = _uiState.value.info ?: return
-        val url = info.uploaderUrl ?: return
-        if (_uiState.value.isSubscribePending) return
+        val ref = ChannelIdentity.from(info.uploaderUrl) ?: return
+        if (_uiState.value.isSubscribePending || _uiState.value.isSubscribed) return
+        _uiState.update { it.copy(isSubscribePending = true, subscriptionError = false) }
         viewModelScope.launch {
-            _uiState.update { it.copy(isSubscribePending = true) }
-            val result =
-                runCatching { repository.channel(url) }
-                    .onFailure { Log.e(LOG_TAG, "subscribe failed: $url", it) }
-            result.getOrNull()?.let { header ->
-                val ref = ChannelRef(header.key, header.url)
-                uploaderKey.value = ref.key
-                subscriptions.subscribe(ref, header.name, header.avatarUrl)
+            try {
+                val canonical =
+                    if (ChannelIdentity.isChannelId(ref.key)) {
+                        ref
+                    } else {
+                        val header = repository.channel(ref.url)
+                        ChannelRef(header.key, header.url)
+                    }
+                uploaderKey.value = canonical.key
+                _uiState.update { it.copy(uploaderKey = canonical.key) }
+                subscriptions.subscribe(canonical, info.uploader, info.uploaderAvatarUrl)
+                viewModelScope.launch {
+                    try {
+                        val header = repository.channel(canonical.url)
+                        subscriptions.updateProfile(canonical.key, header.name, header.avatarUrl)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        Log.e(LOG_TAG, "channel profile failed: ${canonical.url}", error)
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(LOG_TAG, "subscribe failed: ${ref.url}", error)
+                _uiState.update { it.copy(subscriptionError = true) }
+            } finally {
+                _uiState.update { it.copy(isSubscribePending = false) }
             }
-            _uiState.update { it.copy(isSubscribePending = false) }
         }
     }
 
     fun unsubscribe() {
         val key = uploaderKey.value ?: return
         viewModelScope.launch { subscriptions.unsubscribe(key) }
+    }
+
+    fun setNotificationMode(mode: SubscriptionNotificationMode) {
+        val key = uploaderKey.value ?: return
+        viewModelScope.launch { subscriptions.setNotificationMode(key, mode) }
     }
 
     fun load() {
@@ -101,6 +134,7 @@ class PlayerViewModel(
                 hasMoreRelated = current.hasMoreRelated,
                 uploaderKey = current.uploaderKey,
                 isSubscribed = current.isSubscribed,
+                notificationMode = current.notificationMode,
             )
         loadJob =
             viewModelScope.launch {

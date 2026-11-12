@@ -27,7 +27,7 @@ fun MxTubeTheme(
         }
 
     MaterialExpressiveTheme(
-        colorScheme = colorScheme,
+        colorScheme = if (darkTheme) colorScheme else lightSurfaceColors(colorScheme),
         shapes = MxShapes,
         typography = MxTypography,
         content = content,
