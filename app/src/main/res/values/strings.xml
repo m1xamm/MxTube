@@ -41,7 +41,11 @@
     <string name="channel_videos">Videos</string>
     <string name="channel_subscribers">%1$s subscribers</string>
     <string name="channel_error">Could not load the channel</string>
-    <string name="channel_refresh">Refresh channel</string>
+    <string name="channel_block">Block channel</string>
+    <string name="channel_unblock">Unblock channel</string>
+    <string name="channel_blocked_message">Channel blocked. Its videos will not appear in recommendations.</string>
+    <string name="channel_block_error">Could not save channel preferences. Try again.</string>
+    <string name="undo">Undo</string>
     <string name="channel_home">Home</string>
     <string name="channel_playlists">Playlists</string>
     <string name="channel_show_all">Show all</string>

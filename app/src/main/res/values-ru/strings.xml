@@ -41,7 +41,11 @@
     <string name="channel_videos">Видео</string>
     <string name="channel_subscribers">%1$s подписчиков</string>
     <string name="channel_error">Не удалось загрузить канал</string>
-    <string name="channel_refresh">Обновить канал</string>
+    <string name="channel_block">Заблокировать канал</string>
+    <string name="channel_unblock">Разблокировать канал</string>
+    <string name="channel_blocked_message">Канал заблокирован. Его видео не будут появляться в рекомендациях.</string>
+    <string name="channel_block_error">Не удалось сохранить настройки канала. Попробуй ещё раз.</string>
+    <string name="undo">Отменить</string>
     <string name="channel_home">Главная</string>
     <string name="channel_playlists">Плейлисты</string>
     <string name="channel_show_all">Все</string>
