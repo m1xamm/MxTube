@@ -136,6 +136,7 @@ import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import com.m1xamm.mxtube.MxTubeApplication
 import com.m1xamm.mxtube.R
+import com.m1xamm.mxtube.data.local.BlockedChannelsStore
 import com.m1xamm.mxtube.data.local.SubscriptionNotificationMode
 import com.m1xamm.mxtube.data.local.SubscriptionsStore
 import com.m1xamm.mxtube.data.local.UserPreferences
@@ -185,12 +186,15 @@ fun PlayerScreen(
     modifier: Modifier = Modifier,
     subscriptions: SubscriptionsStore =
         (LocalContext.current.applicationContext as MxTubeApplication).subscriptionsStore,
+    blockedChannels: BlockedChannelsStore =
+        (LocalContext.current.applicationContext as MxTubeApplication).blockedChannelsStore,
     viewModel: PlayerViewModel =
         viewModel(key = video.url) {
             PlayerViewModel(
                 video.url,
                 initialRelated = related,
                 subscriptions = subscriptions,
+                blockedChannels = blockedChannels,
             )
         },
 ) {

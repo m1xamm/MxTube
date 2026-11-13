@@ -6,6 +6,7 @@ import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import com.m1xamm.mxtube.data.home.HomeTopics
+import com.m1xamm.mxtube.data.local.BlockedChannelsStore
 import com.m1xamm.mxtube.data.local.HomeFeedCache
 import com.m1xamm.mxtube.data.local.LocalHistoryStore
 import com.m1xamm.mxtube.data.local.SubscriptionsFeedCache
@@ -30,6 +31,7 @@ class MxTubeApplication : Application(), SingletonImageLoader.Factory {
     val homeFeedCache: HomeFeedCache by lazy { HomeFeedCache(this) }
     val subscriptionsStore: SubscriptionsStore by lazy { SubscriptionsStore(this) }
     val subscriptionsFeedCache: SubscriptionsFeedCache by lazy { SubscriptionsFeedCache(this) }
+    val blockedChannelsStore: BlockedChannelsStore by lazy { BlockedChannelsStore(this) }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     override fun onCreate() {

@@ -72,7 +72,7 @@ fun MxTubeApp(
     val historyStore = application.historyStore
     val scope = rememberCoroutineScope()
     val homeViewModel: HomeViewModel =
-        viewModel { HomeViewModel(application.historyStore, application.homeFeedCache) }
+        viewModel { HomeViewModel(application.historyStore, application.homeFeedCache, application.blockedChannelsStore) }
     val searchViewModel: SearchViewModel = viewModel { SearchViewModel(historyStore) }
     val homeListState = rememberLazyListState()
     val searchListState = rememberLazyListState()
@@ -255,7 +255,9 @@ fun MxTubeApp(
             shownChannelUrl?.let { url ->
                 channelStateHolder.SaveableStateProvider(url) {
                     val channelViewModel: ChannelViewModel =
-                        viewModel(key = "channel:$url") { ChannelViewModel(url, application.subscriptionsStore) }
+                        viewModel(key = "channel:$url") {
+                            ChannelViewModel(url, application.subscriptionsStore, application.blockedChannelsStore)
+                        }
                     ChannelScreen(
                         viewModel = channelViewModel,
                         onBack = { selectedChannelUrl = null },

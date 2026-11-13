@@ -3,20 +3,23 @@ package com.m1xamm.mxtube.ui.player
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.m1xamm.mxtube.data.local.BlockedChannelsStore
 import com.m1xamm.mxtube.data.local.SubscriptionNotificationMode
 import com.m1xamm.mxtube.data.local.SubscriptionsStore
+import com.m1xamm.mxtube.data.local.UserPreferences
 import com.m1xamm.mxtube.data.youtube.ChannelIdentity
 import com.m1xamm.mxtube.data.youtube.ChannelRef
 import com.m1xamm.mxtube.data.youtube.PlaybackInfo
 import com.m1xamm.mxtube.data.youtube.VideoSummary
 import com.m1xamm.mxtube.data.youtube.YouTubeRepository
-import com.m1xamm.mxtube.data.local.UserPreferences
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -36,26 +39,40 @@ data class PlayerUiState(
     val isSubscribePending: Boolean = false,
     val notificationMode: SubscriptionNotificationMode = SubscriptionNotificationMode.Personalized,
     val subscriptionError: Boolean = false,
-)
+) {
+    internal fun withoutBlockedChannels(blockedKeys: Set<String>): PlayerUiState =
+        copy(related = related.filterNot { ChannelIdentity.keyOf(it.uploaderUrl) in blockedKeys })
+}
 
 class PlayerViewModel(
     private val videoUrl: String,
     initialRelated: List<VideoSummary> = emptyList(),
     private val repository: YouTubeRepository = YouTubeRepository(),
     private val subscriptions: SubscriptionsStore,
+    private val blockedChannels: BlockedChannelsStore,
+    private val resolveVideo: suspend (String) -> PlaybackInfo = repository::resolve,
+    private val fetchRelated: suspend (String) -> List<VideoSummary> = repository::related,
 ) : ViewModel() {
+    private val relatedSeeds = ArrayDeque<String>()
+    private val expandedSeeds = mutableSetOf(videoUrl)
     private val _uiState =
         MutableStateFlow(
             PlayerUiState(
                 related = initialRelated.distinctBy { it.url },
             ),
         )
-    val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
+    val uiState: StateFlow<PlayerUiState> =
+        combine(
+            _uiState,
+            blockedChannels.state.onStart { blockedChannels.snapshot() },
+        ) { state, blocked ->
+            state.withoutBlockedChannels(blocked.keys).copy(
+                hasMoreRelated = canLoadMoreRelated(state.related, blocked.keys),
+            )
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, PlayerUiState())
 
     private var loadJob: Job? = null
     private var relatedJob: Job? = null
-    private val relatedSeeds = ArrayDeque<String>()
-    private val expandedSeeds = mutableSetOf(videoUrl)
     private val uploaderKey = MutableStateFlow<String?>(null)
 
     init {
@@ -63,6 +80,19 @@ class PlayerViewModel(
             if (seed.url != videoUrl) relatedSeeds.addLast(seed.url)
         }
         load()
+        viewModelScope.launch {
+            uiState.collect {
+                while (true) {
+                    val visible = _uiState.value.withoutBlockedChannels(blockedChannels.state.value.keys)
+                    if (visible.related.isNotEmpty() || visible.isLoading || visible.info == null ||
+                        visible.error || visible.isLoadingRelated || visible.relatedError ||
+                        !canLoadMoreRelated(_uiState.value.related)
+                    ) break
+                    loadMoreRelated()
+                    relatedJob?.join()
+                }
+            }
+        }
         viewModelScope.launch {
             combine(subscriptions.state, uploaderKey) { state, key ->
                 state.channels.firstOrNull { it.key == key }
@@ -127,6 +157,7 @@ class PlayerViewModel(
 
     fun load() {
         loadJob?.cancel()
+        relatedJob?.cancel()
         val current = _uiState.value
         _uiState.value =
             PlayerUiState(
@@ -139,7 +170,8 @@ class PlayerViewModel(
         loadJob =
             viewModelScope.launch {
                 try {
-                    val info = repository.resolve(videoUrl)
+                    blockedChannels.snapshot()
+                    val info = resolveVideo(videoUrl)
                     info.related.forEach { video ->
                         if (video.url != videoUrl &&
                             video.url !in expandedSeeds &&
@@ -179,8 +211,7 @@ class PlayerViewModel(
                             selectedSubtitleIndex = subtitleIndex,
                             related = related,
                             isLoadingRelated = false,
-                            hasMoreRelated =
-                                related.size < MAX_RELATED && relatedSeeds.isNotEmpty(),
+                            hasMoreRelated = canLoadMoreRelated(related),
                             relatedError = false,
                         )
                     }
@@ -194,10 +225,7 @@ class PlayerViewModel(
     }
 
     fun loadMoreRelated() {
-        val state = _uiState.value
-        if (state.isLoadingRelated || !state.hasMoreRelated || state.related.size >= MAX_RELATED) {
-            return
-        }
+        if (_uiState.value.relatedError) return
         loadRelated()
     }
 
@@ -232,10 +260,13 @@ class PlayerViewModel(
     }
 
     private fun loadRelated() {
-        relatedJob?.cancel()
+        val state = _uiState.value
+        if (state.isLoading || state.info == null || state.error || state.isLoadingRelated ||
+            !canLoadMoreRelated(state.related)
+        ) return
+        _uiState.update { it.copy(isLoadingRelated = true, relatedError = false) }
         relatedJob =
             viewModelScope.launch {
-                _uiState.update { it.copy(isLoadingRelated = true, relatedError = false) }
                 try {
                     val seed = nextSeed()
                     if (seed == null) {
@@ -244,7 +275,7 @@ class PlayerViewModel(
                         }
                         return@launch
                     }
-                    val fetched = repository.related(seed)
+                    val fetched = fetchRelated(seed)
                     val current = _uiState.value.related
                     val merged = mergeRelated(current, fetched)
                     fetched.forEach { video ->
@@ -259,8 +290,7 @@ class PlayerViewModel(
                         it.copy(
                             related = merged,
                             isLoadingRelated = false,
-                            hasMoreRelated =
-                                merged.size < MAX_RELATED && relatedSeeds.isNotEmpty(),
+                            hasMoreRelated = canLoadMoreRelated(merged),
                             relatedError = false,
                         )
                     }
@@ -271,6 +301,13 @@ class PlayerViewModel(
                 }
             }
     }
+
+    private fun canLoadMoreRelated(
+        related: List<VideoSummary>,
+        blockedKeys: Set<String> = blockedChannels.state.value.keys,
+    ): Boolean =
+        related.count { ChannelIdentity.keyOf(it.uploaderUrl) !in blockedKeys } < MAX_RELATED &&
+            relatedSeeds.any { it != videoUrl && it !in expandedSeeds }
 
     private fun nextSeed(): String? {
         while (relatedSeeds.isNotEmpty()) {

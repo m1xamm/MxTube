@@ -3,6 +3,7 @@ package com.m1xamm.mxtube.ui.channel
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.m1xamm.mxtube.data.local.BlockedChannelsStore
 import com.m1xamm.mxtube.data.local.SubscriptionNotificationMode
 import com.m1xamm.mxtube.data.local.SubscriptionsStore
 import com.m1xamm.mxtube.data.youtube.ChannelHeader
@@ -57,11 +58,13 @@ data class ChannelUiState(
     val isLoadingMorePlaylist: Boolean = false,
     val isSubscribed: Boolean = false,
     val notificationMode: SubscriptionNotificationMode = SubscriptionNotificationMode.Personalized,
+    val isBlocked: Boolean = false,
 )
 
 class ChannelViewModel internal constructor(
     private val channelUrl: String,
     private val subscriptions: SubscriptionsStore,
+    private val blockedChannels: BlockedChannelsStore,
     private val openTab: (ChannelPage, String) -> ChannelContentSession? = { page, tab ->
         page.tab(tab)?.asChannelContent()
     },
@@ -73,10 +76,12 @@ class ChannelViewModel internal constructor(
     constructor(
         channelUrl: String,
         subscriptions: SubscriptionsStore,
+        blockedChannels: BlockedChannelsStore,
         repository: YouTubeRepository = YouTubeRepository(),
     ) : this(
         channelUrl = channelUrl,
         subscriptions = subscriptions,
+        blockedChannels = blockedChannels,
         openPlaylistSource = { repository.playlist(it).asChannelContent() },
         openChannel = repository::channelPage,
     )
@@ -109,6 +114,14 @@ class ChannelViewModel internal constructor(
                         notificationMode = entry?.notificationMode ?: SubscriptionNotificationMode.Personalized,
                     )
                 }
+            }
+        }
+        viewModelScope.launch {
+            blockedChannels.snapshot()
+            combine(blockedChannels.state, channelKey) { blocked, key ->
+                key in blocked.keys
+            }.collect { isBlocked ->
+                state.update { it.copy(isBlocked = isBlocked) }
             }
         }
         load()
@@ -366,6 +379,40 @@ class ChannelViewModel internal constructor(
     fun setNotificationMode(mode: SubscriptionNotificationMode) {
         val key = channelKey.value ?: return
         viewModelScope.launch { subscriptions.setNotificationMode(key, mode) }
+    }
+
+    suspend fun block(): Boolean {
+        val header = state.value.header ?: return false
+        return try {
+            blockedChannels.block(
+                ChannelRef(header.key, header.url),
+                header.name,
+                header.avatarUrl,
+                aliases = listOfNotNull(
+                    ChannelIdentity.keyOf(channelUrl),
+                    header.handle?.let { ChannelIdentity.keyOf("https://www.youtube.com/$it") },
+                ).toSet(),
+            )
+            true
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.e("MxTubeChannel", "block failed: ${header.key}", error)
+            false
+        }
+    }
+
+    suspend fun unblock(): Boolean {
+        val header = state.value.header ?: return false
+        return try {
+            blockedChannels.unblock(header.key)
+            true
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.e("MxTubeChannel", "unblock failed: ${header.key}", error)
+            false
+        }
     }
 }
 

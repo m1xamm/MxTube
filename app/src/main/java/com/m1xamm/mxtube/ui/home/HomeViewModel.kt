@@ -8,16 +8,20 @@ import com.m1xamm.mxtube.data.home.HomeFeedSession
 import com.m1xamm.mxtube.data.home.HomeTopic
 import com.m1xamm.mxtube.data.home.HomeTopicKind
 import com.m1xamm.mxtube.data.home.HomeTopics
+import com.m1xamm.mxtube.data.local.BlockedChannelsStore
 import com.m1xamm.mxtube.data.local.HistoryState
 import com.m1xamm.mxtube.data.local.HomeFeedCache
 import com.m1xamm.mxtube.data.local.LocalHistoryStore
 import com.m1xamm.mxtube.data.local.UserPreferences
+import com.m1xamm.mxtube.data.youtube.ChannelIdentity
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -34,15 +38,23 @@ data class HomeUiState(
 ) {
     val selectedTopic: HomeTopic
         get() = topics.firstOrNull { it.id == selectedTopicId } ?: HomeTopics.all
+
+    internal fun withoutBlockedChannels(blockedKeys: Set<String>): HomeUiState =
+        copy(items = items.filterNot { ChannelIdentity.keyOf(it.video.uploaderUrl) in blockedKeys })
 }
 
 class HomeViewModel(
     private val historyStore: LocalHistoryStore,
     private val feedCache: HomeFeedCache,
+    private val blockedChannels: BlockedChannelsStore,
     private val repository: HomeFeedRepository = HomeFeedRepository(),
+    private val openFeed: suspend (HomeTopic, HistoryState) -> HomeFeedSession = repository::open,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(HomeUiState())
-    val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+    val uiState: StateFlow<HomeUiState> =
+        combine(_uiState, blockedChannels.state) { state, blocked ->
+            state.withoutBlockedChannels(blocked.keys)
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, HomeUiState())
 
     private val cache = mutableMapOf<String, CachedFeed>()
     private var feedJob: Job? = null
@@ -53,6 +65,20 @@ class HomeViewModel(
 
     init {
         viewModelScope.launch {
+            uiState.collect {
+                while (true) {
+                    val visible = _uiState.value.withoutBlockedChannels(blockedChannels.state.value.keys)
+                    if (visible.items.isNotEmpty() || !visible.hasMore ||
+                        visible.isLoading || visible.isLoadingMore || visible.error || visible.loadMoreError ||
+                        cache[visible.selectedTopicId] == null
+                    ) break
+                    loadMore()
+                    loadMoreJob?.join()
+                }
+            }
+        }
+        viewModelScope.launch {
+            blockedChannels.snapshot()
             val cachedFeed = feedCache.read()
 
             var initial = historyStore.snapshot()
@@ -169,7 +195,7 @@ class HomeViewModel(
 
     fun loadMore() {
         val state = _uiState.value
-        if (state.isLoading || state.isLoadingMore || state.error || !state.hasMore) return
+        if (state.isLoading || state.isLoadingMore || state.error || state.loadMoreError || !state.hasMore) return
         val topicId = state.selectedTopicId
         val cached = cache[topicId] ?: return
 
@@ -287,7 +313,7 @@ class HomeViewModel(
                         }
                     val session =
                         withTimeoutOrNull(FEED_TIMEOUT_MS) {
-                            repository.open(topic, effectiveHistory)
+                            openFeed(topic, effectiveHistory)
                         } ?: throw IllegalStateException("feed timeout")
                     if (_uiState.value.selectedTopicId != topic.id) return@launch
                     if (session.initialItems.isEmpty()) {
