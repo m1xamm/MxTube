@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.m1xamm.mxtube.R
+import com.m1xamm.mxtube.data.local.SubscriptionNotificationMode
 import com.m1xamm.mxtube.data.youtube.VideoSummary
 import com.m1xamm.mxtube.ui.common.formatRelativeDate
 import com.m1xamm.mxtube.ui.common.viewsText
@@ -52,6 +53,12 @@ fun PlayerLoadingScreen(
     related: List<VideoSummary>,
     onBack: () -> Unit,
     onRelatedClick: (VideoSummary) -> Unit,
+    isSubscribed: Boolean,
+    pending: Boolean,
+    notificationMode: SubscriptionNotificationMode,
+    onChannelClick: (String) -> Unit,
+    onSubscribe: () -> Unit,
+    onManageSubscription: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     PlayerInfoScreen(
@@ -59,6 +66,12 @@ fun PlayerLoadingScreen(
         related = related,
         onBack = onBack,
         onRelatedClick = onRelatedClick,
+        isSubscribed = isSubscribed,
+        pending = pending,
+        notificationMode = notificationMode,
+        onChannelClick = onChannelClick,
+        onSubscribe = onSubscribe,
+        onManageSubscription = onManageSubscription,
         modifier = modifier,
     ) {
         Box(
@@ -84,6 +97,12 @@ fun PlayerOpenErrorScreen(
     onBack: () -> Unit,
     onRelatedClick: (VideoSummary) -> Unit,
     onRetry: () -> Unit,
+    isSubscribed: Boolean,
+    pending: Boolean,
+    notificationMode: SubscriptionNotificationMode,
+    onChannelClick: (String) -> Unit,
+    onSubscribe: () -> Unit,
+    onManageSubscription: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     PlayerInfoScreen(
@@ -91,6 +110,12 @@ fun PlayerOpenErrorScreen(
         related = related,
         onBack = onBack,
         onRelatedClick = onRelatedClick,
+        isSubscribed = isSubscribed,
+        pending = pending,
+        notificationMode = notificationMode,
+        onChannelClick = onChannelClick,
+        onSubscribe = onSubscribe,
+        onManageSubscription = onManageSubscription,
         modifier = modifier,
     ) {
         Surface(
@@ -124,6 +149,12 @@ private fun PlayerInfoScreen(
     related: List<VideoSummary>,
     onBack: () -> Unit,
     onRelatedClick: (VideoSummary) -> Unit,
+    isSubscribed: Boolean,
+    pending: Boolean,
+    notificationMode: SubscriptionNotificationMode,
+    onChannelClick: (String) -> Unit,
+    onSubscribe: () -> Unit,
+    onManageSubscription: () -> Unit,
     modifier: Modifier = Modifier,
     stageContent: @Composable () -> Unit,
 ) {
@@ -193,22 +224,28 @@ private fun PlayerInfoScreen(
                         overflow = TextOverflow.Ellipsis,
                     )
 
-                    Spacer(Modifier.height(10.dp))
-
-                    Text(
-                        text = channel,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-
                     if (meta.isNotBlank()) {
-                        Spacer(Modifier.height(3.dp))
+                        Spacer(Modifier.height(6.dp))
                         Text(
                             text = meta,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    ChannelSubscribeCard(
+                        channelName = channel,
+                        avatarUrl = null,
+                        uploaderUrl = video.uploaderUrl,
+                        isSubscribed = isSubscribed,
+                        pending = pending,
+                        notificationMode = notificationMode,
+                        onChannelClick = onChannelClick,
+                        onSubscribe = onSubscribe,
+                        onManageSubscription = onManageSubscription,
+                    )
                 }
             }
 

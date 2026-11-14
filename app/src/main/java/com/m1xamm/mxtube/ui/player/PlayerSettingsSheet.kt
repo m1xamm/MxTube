@@ -48,10 +48,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -113,12 +111,6 @@ private enum class MainEntry(
 private const val MIN_SPEED = 0.25f
 private const val MAX_SPEED = 5f
 private const val SPEED_STEP = 0.05f
-private val SPEED_PRESET_ROWS =
-    listOf(
-        listOf(0.25f, 0.5f, 0.75f, 1f),
-        listOf(1.25f, 1.5f, 1.75f, 2f),
-        listOf(2.5f, 3f, 4f, 5f),
-    )
 
 @Composable
 fun PlayerSettingsOverlay(
@@ -716,54 +708,14 @@ private fun SpeedPicker(
             activeTrackColor = MaterialTheme.colorScheme.primary,
             inactiveTrackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.24f),
         )
-    val stepButtonColors =
-        IconButtonDefaults.filledTonalIconButtonColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f),
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
 
     Column(modifier = modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = formatSpeed(speed),
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.headlineLarge.copy(fontFeatureSettings = "tnum"),
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-
-            FilledTonalIconButton(
-                onClick = { onSpeedSelected(stepSpeed(speed, -SPEED_STEP)) },
-                enabled = speed > MIN_SPEED,
-                modifier = Modifier.size(40.dp),
-                colors = stepButtonColors,
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_remove_rounded),
-                    contentDescription = stringResource(R.string.player_speed_down),
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-
-            FilledTonalIconButton(
-                onClick = { onSpeedSelected(stepSpeed(speed, SPEED_STEP)) },
-                enabled = speed < MAX_SPEED,
-                modifier =
-                    Modifier
-                        .padding(start = 8.dp)
-                        .size(40.dp),
-                colors = stepButtonColors,
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_add_rounded),
-                    contentDescription = stringResource(R.string.player_speed_up),
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-        }
+        Text(
+            text = formatSpeed(speed),
+            style = MaterialTheme.typography.headlineLarge.copy(fontFeatureSettings = "tnum"),
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
 
         Spacer(Modifier.height(8.dp))
 
@@ -790,56 +742,6 @@ private fun SpeedPicker(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-
-        Spacer(Modifier.height(18.dp))
-
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            SPEED_PRESET_ROWS.forEach { presets ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    presets.forEach { preset ->
-                        val selected = speed == preset
-                        Surface(
-                            onClick = { onSpeedSelected(preset) },
-                            modifier =
-                                Modifier
-                                    .weight(1f)
-                                    .height(40.dp),
-                            shape = RoundedCornerShape(50),
-                            color =
-                                if (selected) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.surfaceContainerHighest.copy(
-                                        alpha = 0.6f,
-                                    )
-                                },
-                            contentColor =
-                                if (selected) {
-                                    MaterialTheme.colorScheme.onPrimary
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                        ) {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text(
-                                    text = formatSpeed(preset),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight =
-                                        if (selected) {
-                                            FontWeight.SemiBold
-                                        } else {
-                                            FontWeight.Medium
-                                        },
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -852,8 +754,6 @@ private fun fractionToSpeed(fraction: Float): Float {
     val raw = MIN_SPEED * (MAX_SPEED / MIN_SPEED).pow(fraction.coerceIn(0f, 1f))
     return snapSpeed(raw)
 }
-
-private fun stepSpeed(speed: Float, delta: Float): Float = snapSpeed(speed + delta)
 
 private fun snapSpeed(value: Float): Float =
     (round(value / SPEED_STEP) * SPEED_STEP).coerceIn(MIN_SPEED, MAX_SPEED)

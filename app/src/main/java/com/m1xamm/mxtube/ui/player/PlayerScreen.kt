@@ -16,6 +16,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -30,6 +32,10 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -89,6 +95,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -195,6 +203,8 @@ fun PlayerScreen(
                 initialRelated = related,
                 subscriptions = subscriptions,
                 blockedChannels = blockedChannels,
+                initialUploaderUrl = video.uploaderUrl,
+                initialUploaderName = video.uploader,
             )
         },
 ) {
@@ -471,6 +481,14 @@ fun PlayerScreen(
         controlsVisible = true
         settingsOpen = true
     }
+    val onSubscribeAction: () -> Unit = {
+        viewModel.subscribe()
+        requestNotifications()
+    }
+    val onManageAction: () -> Unit = {
+        controlsVisible = false
+        subscriptionMenuOpen = true
+    }
 
     when {
         state.error -> {
@@ -480,6 +498,12 @@ fun PlayerScreen(
                 onBack = handleBack,
                 onRelatedClick = onRelatedClick,
                 onRetry = viewModel::load,
+                isSubscribed = state.isSubscribed,
+                pending = state.isSubscribePending,
+                notificationMode = state.notificationMode,
+                onChannelClick = onChannelClick,
+                onSubscribe = onSubscribeAction,
+                onManageSubscription = onManageAction,
                 modifier = modifier,
             )
         }
@@ -490,6 +514,12 @@ fun PlayerScreen(
                 related = state.related,
                 onBack = handleBack,
                 onRelatedClick = onRelatedClick,
+                isSubscribed = state.isSubscribed,
+                pending = state.isSubscribePending,
+                notificationMode = state.notificationMode,
+                onChannelClick = onChannelClick,
+                onSubscribe = onSubscribeAction,
+                onManageSubscription = onManageAction,
                 modifier = modifier,
             )
         }
@@ -698,6 +728,12 @@ private fun PlayerStage(
         )
     val chromeContent = MaterialTheme.colorScheme.onSurface
     val subtitleShift = with(LocalDensity.current) { if (controlsVisible) 40.dp.toPx() else 0f }
+    var zoomScale by remember { mutableFloatStateOf(1f) }
+    var zoomOffset by remember { mutableStateOf(Offset.Zero) }
+    LaunchedEffect(isFullscreen) {
+        zoomScale = 1f
+        zoomOffset = Offset.Zero
+    }
     val playButtonState =
         when {
             isBuffering -> PlayButtonState.Buffering
@@ -794,6 +830,49 @@ private fun PlayerStage(
             modifier =
                 Modifier
                     .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = zoomScale
+                        scaleY = zoomScale
+                        translationX = zoomOffset.x
+                        translationY = zoomOffset.y
+                    }
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            var scale = zoomScale
+                            var offset = zoomOffset
+                            do {
+                                val event = awaitPointerEvent()
+                                val pointers = event.changes.count { it.pressed }
+                                val zoomChange = event.calculateZoom()
+                                val panChange = event.calculatePan()
+                                if (pointers >= 2) {
+                                    scale = (scale * zoomChange).coerceIn(1f, 4f)
+                                    val maxX = (scale - 1f) * size.width / 2f
+                                    val maxY = (scale - 1f) * size.height / 2f
+                                    offset = Offset(
+                                        (offset.x + panChange.x).coerceIn(-maxX, maxX),
+                                        (offset.y + panChange.y).coerceIn(-maxY, maxY),
+                                    )
+                                    event.changes.forEach { it.consume() }
+                                } else if (scale > 1f) {
+                                    val maxX = (scale - 1f) * size.width / 2f
+                                    val maxY = (scale - 1f) * size.height / 2f
+                                    offset = Offset(
+                                        (offset.x + panChange.x).coerceIn(-maxX, maxX),
+                                        (offset.y + panChange.y).coerceIn(-maxY, maxY),
+                                    )
+                                    event.changes.forEach { it.consume() }
+                                }
+                                zoomScale = scale
+                                zoomOffset = offset
+                            } while (event.changes.any { it.pressed })
+                            if (scale <= 1.01f) {
+                                zoomScale = 1f
+                                zoomOffset = Offset.Zero
+                            }
+                        }
+                    }
                     .hazeSource(hazeState),
         )
 
@@ -1464,49 +1543,17 @@ private fun PlayerDetails(
 
                 Spacer(Modifier.height(12.dp))
 
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(28.dp),
-                    color = clusterCardColor(),
-                ) {
-                    Row(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Row(
-                            modifier =
-                                Modifier.weight(1f).clip(RoundedCornerShape(20.dp))
-                                    .then(
-                                        info.uploaderUrl?.let { url ->
-                                            Modifier.clickable { onChannelClick(url) }
-                                        } ?: Modifier,
-                                    ),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            ChannelAvatar(url = info.uploaderAvatarUrl, name = channelName)
-                            Text(
-                                text = channelName,
-                                modifier = Modifier.weight(1f),
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        SubscribeButton(
-                            subscribed = isSubscribed,
-                            pending = isSubscribePending,
-                            notificationMode = notificationMode,
-                            channelName = channelName,
-                            onClick = if (isSubscribed) onManageSubscription else onSubscribe,
-                        )
-                    }
-                }
+                ChannelSubscribeCard(
+                    channelName = channelName,
+                    avatarUrl = info.uploaderAvatarUrl,
+                    uploaderUrl = info.uploaderUrl,
+                    isSubscribed = isSubscribed,
+                    pending = isSubscribePending,
+                    notificationMode = notificationMode,
+                    onChannelClick = onChannelClick,
+                    onSubscribe = onSubscribe,
+                    onManageSubscription = onManageSubscription,
+                )
                 if (subscriptionError) {
                     Text(
                         text = stringResource(R.string.subscription_error),
@@ -1540,7 +1587,57 @@ private fun PlayerDetails(
 }
 
 @Composable
-private fun ChannelAvatar(
+internal fun ChannelSubscribeCard(
+    channelName: String,
+    avatarUrl: String?,
+    uploaderUrl: String?,
+    isSubscribed: Boolean,
+    pending: Boolean,
+    notificationMode: SubscriptionNotificationMode,
+    onChannelClick: (String) -> Unit,
+    onSubscribe: () -> Unit,
+    onManageSubscription: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        color = clusterCardColor(),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.weight(1f).clip(RoundedCornerShape(20.dp))
+                    .then(uploaderUrl?.let { url -> Modifier.clickable { onChannelClick(url) } } ?: Modifier),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ChannelAvatar(url = avatarUrl, name = channelName)
+                Text(
+                    text = channelName,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            SubscribeButton(
+                subscribed = isSubscribed,
+                pending = pending,
+                notificationMode = notificationMode,
+                channelName = channelName,
+                onClick = if (isSubscribed) onManageSubscription else onSubscribe,
+            )
+        }
+    }
+}
+
+@Composable
+internal fun ChannelAvatar(
     url: String?,
     name: String,
     size: Dp = 40.dp,
@@ -1571,7 +1668,7 @@ private fun ChannelAvatar(
 }
 
 @Composable
-private fun SubscribeButton(
+internal fun SubscribeButton(
     subscribed: Boolean,
     pending: Boolean,
     notificationMode: SubscriptionNotificationMode,
@@ -1580,13 +1677,43 @@ private fun SubscribeButton(
 ) {
     val description = stringResource(R.string.subscription_manage, channelName)
     val modeLabel = subscriptionNotificationLabel(notificationMode)
-    Button(
-        onClick = onClick,
-        enabled = !pending,
-        shape = CircleShape,
+    val revealColor =
+        if (subscribed) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.primary
+    val baseColor =
+        if (subscribed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer
+    val contentColor =
+        if (subscribed) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onPrimary
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    val progress = remember { Animatable(1f) }
+    var first by remember { mutableStateOf(true) }
+    val currentOnClick = rememberUpdatedState(onClick)
+    LaunchedEffect(subscribed) {
+        if (first) {
+            first = false
+        } else {
+            progress.snapTo(0f)
+            progress.animateTo(1f, tween(320, easing = FastOutSlowInEasing))
+        }
+    }
+    Box(
         modifier =
             Modifier
                 .heightIn(min = 36.dp)
+                .clip(CircleShape)
+                .background(baseColor)
+                .drawBehind {
+                    drawCircle(
+                        color = revealColor,
+                        radius = progress.value * size.maxDimension,
+                        center = if (origin == Offset.Zero) center else origin,
+                    )
+                }
+                .pointerInput(pending) {
+                    if (!pending) detectTapGestures { offset ->
+                        origin = offset
+                        currentOnClick.value()
+                    }
+                }
                 .then(
                     if (subscribed) {
                         Modifier.semantics {
@@ -1594,39 +1721,42 @@ private fun SubscribeButton(
                             stateDescription = modeLabel
                         }
                     } else Modifier,
-                ),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-        colors =
-            if (subscribed) {
-                ButtonDefaults.filledTonalButtonColors(
-                    disabledContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    disabledContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
-            } else {
-                ButtonDefaults.buttonColors(
-                    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            },
+                .padding(horizontal = 12.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        if (subscribed) {
-            Icon(
-                painter = painterResource(subscriptionNotificationIcon(notificationMode)),
-                contentDescription = null,
-                modifier = Modifier.size(24.dp),
-            )
-            Spacer(Modifier.width(4.dp))
-            Icon(
-                painter = painterResource(R.drawable.ic_expand_more_rounded),
-                contentDescription = null,
-                modifier = Modifier.size(24.dp),
-            )
-        } else {
-            Text(
-                text = stringResource(R.string.subscribe),
-                style = MaterialTheme.typography.labelLarge,
-                maxLines = 1,
-            )
+        AnimatedContent(
+            targetState = subscribed,
+            transitionSpec = {
+                (fadeIn(tween(160)) + scaleIn(initialScale = 0.8f)) togetherWith
+                    (fadeOut(tween(120)) + scaleOut(targetScale = 0.8f))
+            },
+            label = "subscribe-morph",
+        ) { sub ->
+            if (sub) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        painter = painterResource(subscriptionNotificationIcon(notificationMode)),
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = contentColor,
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Icon(
+                        painter = painterResource(R.drawable.ic_expand_more_rounded),
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = contentColor,
+                    )
+                }
+            } else {
+                Text(
+                    text = stringResource(R.string.subscribe),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = contentColor,
+                    maxLines = 1,
+                )
+            }
         }
     }
 }

@@ -50,6 +50,8 @@ class PlayerViewModel(
     private val repository: YouTubeRepository = YouTubeRepository(),
     private val subscriptions: SubscriptionsStore,
     private val blockedChannels: BlockedChannelsStore,
+    private val initialUploaderUrl: String? = null,
+    private val initialUploaderName: String = "",
     private val resolveVideo: suspend (String) -> PlaybackInfo = repository::resolve,
     private val fetchRelated: suspend (String) -> List<VideoSummary> = repository::related,
 ) : ViewModel() {
@@ -79,6 +81,7 @@ class PlayerViewModel(
         initialRelated.forEach { seed ->
             if (seed.url != videoUrl) relatedSeeds.addLast(seed.url)
         }
+        uploaderKey.value = ChannelIdentity.keyOf(initialUploaderUrl)
         load()
         viewModelScope.launch {
             uiState.collect {
@@ -108,8 +111,10 @@ class PlayerViewModel(
     }
 
     fun subscribe() {
-        val info = _uiState.value.info ?: return
-        val ref = ChannelIdentity.from(info.uploaderUrl) ?: return
+        val info = _uiState.value.info
+        val uploaderUrl = info?.uploaderUrl ?: initialUploaderUrl ?: return
+        val uploaderName = info?.uploader ?: initialUploaderName
+        val ref = ChannelIdentity.from(uploaderUrl) ?: return
         if (_uiState.value.isSubscribePending || _uiState.value.isSubscribed) return
         _uiState.update { it.copy(isSubscribePending = true, subscriptionError = false) }
         viewModelScope.launch {
@@ -123,7 +128,7 @@ class PlayerViewModel(
                     }
                 uploaderKey.value = canonical.key
                 _uiState.update { it.copy(uploaderKey = canonical.key) }
-                subscriptions.subscribe(canonical, info.uploader, info.uploaderAvatarUrl)
+                subscriptions.subscribe(canonical, uploaderName, info?.uploaderAvatarUrl)
                 viewModelScope.launch {
                     try {
                         val header = repository.channel(canonical.url)
