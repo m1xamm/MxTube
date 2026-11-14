@@ -11,8 +11,11 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -20,6 +23,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,6 +39,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -49,7 +54,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
@@ -57,6 +61,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarData
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -67,7 +73,6 @@ import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.ToggleButtonSize
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -75,6 +80,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -84,24 +90,24 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.ColorPainter
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLinkStyles
-import androidx.compose.ui.text.LinkAnnotation
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -123,6 +129,8 @@ import com.m1xamm.mxtube.ui.common.clusterInnerColor
 import com.m1xamm.mxtube.ui.common.compactCount
 import com.m1xamm.mxtube.ui.common.formatDuration
 import com.m1xamm.mxtube.ui.common.formatRelativeDate
+import com.m1xamm.mxtube.ui.common.heroImage
+import com.m1xamm.mxtube.ui.common.heroTitle
 import com.m1xamm.mxtube.ui.player.SubscriptionMenuSheet
 import com.m1xamm.mxtube.ui.player.subscriptionNotificationIcon
 import com.m1xamm.mxtube.ui.search.VideoRow
@@ -181,6 +189,7 @@ fun ChannelScreen(
     }
     BackHandler {
         when {
+            aboutOpen -> aboutOpen = false
             overflowOpen -> overflowOpen = false
             state.selectedPlaylist != null -> viewModel.closePlaylist()
             else -> onBack()
@@ -239,13 +248,17 @@ fun ChannelScreen(
             state = refreshState,
             modifier = Modifier.fillMaxSize(),
             indicator = {
-                PullToRefreshDefaults.Indicator(
-                    state = refreshState,
-                    isRefreshing = state.isRefreshing || state.isLoadingPlaylist,
-                    modifier = Modifier.align(Alignment.TopCenter)
-                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
-                        .padding(top = 64.dp),
-                )
+                val busy = state.isRefreshing || state.isLoadingPlaylist
+                val progress = if (busy) 1f else refreshState.distanceFraction.coerceIn(0f, 1f)
+                if (progress > 0f) {
+                    LoadingIndicator(
+                        modifier = Modifier.align(Alignment.TopCenter)
+                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
+                            .padding(top = 64.dp)
+                            .size(40.dp)
+                            .graphicsLayer { alpha = progress },
+                    )
+                }
             },
         ) {
             if (selectedPlaylist != null) {
@@ -328,6 +341,7 @@ fun ChannelScreen(
                             if (snackbar.showSnackbar(
                                     message = context.getString(R.string.channel_blocked_message),
                                     actionLabel = context.getString(R.string.undo),
+                                    duration = SnackbarDuration.Short,
                                 ) == SnackbarResult.ActionPerformed && !viewModel.unblock()
                             ) {
                                 snackbar.showSnackbar(context.getString(R.string.channel_block_error))
@@ -353,7 +367,9 @@ fun ChannelScreen(
             snackbar,
             Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
                 .padding(bottom = if (miniPlayer != null) 72.dp else 0.dp),
-        )
+        ) { data ->
+            GlassSnackbar(data, haze)
+        }
         if (menuOpen) {
             SubscriptionMenuSheet(
                 mode = state.notificationMode,
@@ -369,9 +385,7 @@ fun ChannelScreen(
             )
         }
         if (aboutOpen && header != null) {
-            GlassBottomSheet(hazeState = haze, title = stringResource(R.string.channel_about), onDismiss = { aboutOpen = false }) { _ ->
-                AboutContent(header.name, header.handle, header.description)
-            }
+            AboutChannelScreen(header = header, onBack = { aboutOpen = false }, modifier = Modifier.fillMaxSize())
         }
         if (searchOpen) {
             GlassBottomSheet(hazeState = haze, title = stringResource(R.string.channel_search), onDismiss = { searchOpen = false }) { _ ->
@@ -507,16 +521,16 @@ private fun MorphingOverflowIcon(expanded: Boolean) {
         val p = progress.coerceIn(0f, 1f)
         drawLine(
             color = color,
-            start = androidx.compose.ui.geometry.Offset((12f - 7f * p) * unit, (6f - p) * unit),
-            end = androidx.compose.ui.geometry.Offset((12f + 7f * p) * unit, (6f + 13f * p) * unit),
-            strokeWidth = 3f * unit,
+            start = androidx.compose.ui.geometry.Offset((12f - 5f * p) * unit, (6f + p) * unit),
+            end = androidx.compose.ui.geometry.Offset((12f + 5f * p) * unit, (6f + 11f * p) * unit),
+            strokeWidth = 2.5f * unit,
             cap = StrokeCap.Round,
         )
         drawLine(
             color = color,
-            start = androidx.compose.ui.geometry.Offset((12f - 7f * p) * unit, (18f + p) * unit),
-            end = androidx.compose.ui.geometry.Offset((12f + 7f * p) * unit, (18f - 13f * p) * unit),
-            strokeWidth = 3f * unit,
+            start = androidx.compose.ui.geometry.Offset((12f - 5f * p) * unit, (18f - p) * unit),
+            end = androidx.compose.ui.geometry.Offset((12f + 5f * p) * unit, (18f - 11f * p) * unit),
+            strokeWidth = 2.5f * unit,
             cap = StrokeCap.Round,
         )
         drawCircle(color, radius = 1.5f * unit * (1f - p), center = center)
@@ -930,7 +944,7 @@ private fun OverviewCard(video: VideoSummary, startCorner: Dp, endCorner: Dp, on
         tonalElevation = 1.dp,
     ) {
         Column(Modifier.padding(8.dp)) {
-            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(16.dp)).background(clusterInnerColor())) {
+            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(16.dp)).background(clusterInnerColor()).heroImage(video.url)) {
                 AsyncImage(video.thumbnailUrl, contentDescription = video.title, contentScale = ContentScale.Crop, placeholder = placeholder, error = placeholder, modifier = Modifier.fillMaxSize())
                 if (duration.isNotBlank()) {
                     Text(
@@ -942,7 +956,7 @@ private fun OverviewCard(video: VideoSummary, startCorner: Dp, endCorner: Dp, on
                 }
             }
             Spacer(Modifier.height(8.dp))
-            Text(video.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(video.title, modifier = Modifier.heroTitle(video.url, MaterialTheme.typography.titleSmall), style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (meta.isNotBlank()) {
                 Spacer(Modifier.height(4.dp))
                 Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -1009,25 +1023,39 @@ private fun MoreErrorItem(onRetry: () -> Unit) {
     }
 }
 
+
 @Composable
-private fun AboutContent(name: String, handle: String?, description: String) {
-    val primary = MaterialTheme.colorScheme.primary
-    val annotated = remember(description, primary) {
-        buildAnnotatedString {
-            var last = 0
-            Regex("""https?://[^\s<>"']+""").findAll(description).forEach { match ->
-                append(description.substring(last, match.range.first))
-                val url = match.value
-                withLink(LinkAnnotation.Url(url, TextLinkStyles(SpanStyle(color = primary, textDecoration = TextDecoration.Underline)))) { append(url) }
-                last = match.range.last + 1
+private fun GlassSnackbar(data: SnackbarData, haze: HazeState) {
+    val hasAction = data.visuals.actionLabel != null
+    Box(
+        Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .hazeBlur(input = HazeInput.Sources(haze), style = HazeMaterials.ultraThin())
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.32f)),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                painterResource(if (hasAction) R.drawable.ic_block_rounded else R.drawable.ic_info_rounded),
+                null,
+                Modifier.size(24.dp),
+            )
+            Text(
+                data.visuals.message,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (hasAction) {
+                TextButton(onClick = { data.performAction() }) {
+                    Text(data.visuals.actionLabel.orEmpty())
+                }
             }
-            append(description.substring(last))
         }
-    }
-    Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text(name, style = MaterialTheme.typography.titleLarge)
-        handle?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        SelectionContainer { Text(annotated, style = MaterialTheme.typography.bodyMedium) }
     }
 }
 
@@ -1050,16 +1078,53 @@ private fun ChannelMiniPlayer(
         player.addListener(listener)
         onDispose { player.removeListener(listener) }
     }
+    var drag by remember { mutableFloatStateOf(0f) }
+    var settling by remember { mutableStateOf(false) }
+    val offsetY by animateFloatAsState(
+        targetValue = if (settling) 0f else drag,
+        animationSpec = if (settling) spring(dampingRatio = Spring.DampingRatioNoBouncy) else snap(),
+        label = "mini-player-drag",
+    )
+    val dismissDistance = with(LocalDensity.current) { 96.dp.toPx() }
+    LaunchedEffect(settling, offsetY) {
+        if (settling && offsetY == 0f) {
+            drag = 0f
+            settling = false
+        }
+    }
     Surface(
         onClick = onExpand,
-        modifier = modifier.navigationBarsPadding().padding(8.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp))
+        modifier = modifier.navigationBarsPadding().padding(8.dp).fillMaxWidth()
+            .offset { IntOffset(0, offsetY.roundToInt()) }
+            .clip(RoundedCornerShape(28.dp))
             .hazeBlur(input = HazeInput.Sources(haze), style = HazeMaterials.ultraThin())
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.32f)),
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.32f))
+            .pointerInput(Unit) {
+                detectVerticalDragGestures(
+                    onDragStart = { settling = false },
+                    onVerticalDrag = { change, amount ->
+                        change.consume()
+                        drag = (drag + amount).coerceAtLeast(0f)
+                    },
+                    onDragEnd = { if (drag > dismissDistance) onClose() else settling = true },
+                    onDragCancel = { settling = true },
+                )
+            },
         shape = RoundedCornerShape(28.dp),
         color = Color.Transparent,
     ) {
         Row(Modifier.heightIn(min = 56.dp).padding(start = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AsyncImage(video.thumbnailUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(40.dp).clip(RoundedCornerShape(16.dp)))
+            AndroidView(
+                factory = { ctx ->
+                    androidx.media3.ui.PlayerView(ctx).apply {
+                        useController = false
+                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+                        this.player = player
+                    }
+                },
+                modifier = Modifier.width(96.dp).height(54.dp).clip(RoundedCornerShape(12.dp)),
+            )
             Text(title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
             IconButton(onClick = {
                 if (player.playWhenReady && player.playbackState != Player.STATE_ENDED) player.pause()

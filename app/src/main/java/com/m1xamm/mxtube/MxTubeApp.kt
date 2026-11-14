@@ -14,7 +14,10 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -29,9 +32,16 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.m1xamm.mxtube.data.home.HomeTopics
+import com.m1xamm.mxtube.ui.common.HeroOverlay
+import com.m1xamm.mxtube.ui.common.HeroRects
+import com.m1xamm.mxtube.ui.common.HeroSource
 import com.m1xamm.mxtube.data.youtube.VideoSummary
 import com.m1xamm.mxtube.playback.PlaybackHolder
 import com.m1xamm.mxtube.playback.PlaybackService
@@ -77,6 +87,11 @@ fun MxTubeApp(
     val homeListState = rememberLazyListState()
     val searchListState = rememberLazyListState()
     val subscriptionsListState = rememberLazyListState()
+    var hero by remember { mutableStateOf<Pair<VideoSummary, HeroRects>?>(null) }
+    LaunchedEffect(selectedVideo) {
+        val v = selectedVideo
+        hero = if (v != null) HeroSource.bounds[v.url]?.let { v to it } else null
+    }
     val showNav = selectedVideo == null && selectedChannelUrl == null && !isSearchActive
     val openChannel: (String) -> Unit = { url ->
         shownChannelUrl = url
@@ -288,6 +303,22 @@ fun MxTubeApp(
                     )
                 }
             }
+        }
+
+        hero?.let { (v, src) ->
+            val density = LocalDensity.current
+            val container = LocalWindowInfo.current.containerSize
+            val statusTop = with(density) { WindowInsets.statusBars.asPaddingValues().calculateTopPadding().toPx() }
+            val w = container.width.toFloat()
+            val videoBottom = statusTop + w * 9f / 16f
+            val pad = with(density) { 16.dp.toPx() }
+            HeroOverlay(
+                video = v,
+                source = src,
+                targetImage = Rect(0f, statusTop, w, videoBottom),
+                targetTitle = Rect(pad, videoBottom + pad, w - pad, videoBottom + pad + with(density) { 64.dp.toPx() }),
+                onDone = { hero = null },
+            )
         }
     }
 }

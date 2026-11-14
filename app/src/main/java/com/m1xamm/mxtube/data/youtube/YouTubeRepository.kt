@@ -2,6 +2,8 @@ package com.m1xamm.mxtube.data.youtube
 
 import com.m1xamm.mxtube.AppLocale
 import com.m1xamm.mxtube.R
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.schabi.newpipe.extractor.Extractor
 import org.schabi.newpipe.extractor.InfoItem
 import org.schabi.newpipe.extractor.ListExtractor.InfoItemsPage
@@ -43,6 +45,45 @@ class YouTubeRepository(
         YouTubePlaylistSession(ServiceList.YouTube.getPlaylistExtractor(url).withAppLocale())
 
     suspend fun channel(url: String): ChannelHeader = channelPage(url).header
+
+    suspend fun channelAbout(url: String): ChannelAbout =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                val target = url.trimEnd('/') + "/about"
+                val localizedTarget =
+                    target.toHttpUrlOrNull()
+                        ?.newBuilder()
+                        ?.addQueryParameter("hl", NewPipe.getPreferredLocalization().languageCode)
+                        ?.addQueryParameter("gl", NewPipe.getPreferredContentCountry().countryCode)
+                        ?.build()
+                        ?: target.toHttpUrl()
+                val request = okhttp3.Request.Builder().url(localizedTarget).build()
+                val html = com.m1xamm.mxtube.data.network.Http.client.newCall(request).execute().use {
+                    it.body.string()
+                }
+                val country =
+                    Regex("\"country\":\\{\"simpleText\":\"([^\"]+)\"").find(html)?.groupValues?.get(1)
+                        ?: Regex("\"country\":\"([^\"]+)\"").find(html)?.groupValues?.get(1)
+                val joined =
+                    Regex("\"joinedDateText\":\\{\"content\":\"([^\"]+)\"").find(html)?.groupValues?.get(1)
+                        ?.let { raw ->
+                            raw.substringAfter(": ", raw)
+                                .removePrefix("Канал створено ")
+                                .removePrefix("Channel created ")
+                                .removePrefix("Joined ")
+                        }
+                val views =
+                    Regex("\"viewCountText\":\"([^\"]+)\"").find(html)?.groupValues?.get(1)
+                        ?.let { ViewCountCorrector.parseViewCount(it)?.toString() }
+                val links =
+                    Regex("\"title\":\\{\"content\":\"([^\"]+)\"\\},\"link\":\\{\"content\":\"([^\"]+)\"")
+                        .findAll(html)
+                        .map { ChannelLink(it.groupValues[1], it.groupValues[2]) }
+                        .distinctBy { it.url }
+                        .toList()
+                ChannelAbout(country, joined, views, links)
+            }.getOrDefault(ChannelAbout())
+        }
 
     /**
      * The tab handlers have to come from the channel response: a tab url built by hand makes

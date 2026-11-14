@@ -11,7 +11,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,12 +36,13 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -60,15 +60,20 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.m1xamm.mxtube.R
 import com.m1xamm.mxtube.data.local.SubscriptionEntry
 import com.m1xamm.mxtube.data.youtube.VideoSummary
+import com.m1xamm.mxtube.ui.common.clusterCardColor
 import com.m1xamm.mxtube.ui.home.HomeVideoCard
 import com.m1xamm.mxtube.ui.home.HomeVideoCardSkeleton
 
@@ -177,7 +182,7 @@ private fun ChannelsStrip(
     LazyRow(
         modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         item(key = "subscriptions_all") {
             ChannelControl(
@@ -186,14 +191,18 @@ private fun ChannelsStrip(
                 selected = selectedKey == null,
                 onClick = { onSelected(null) },
                 all = true,
+                startCorner = 24.dp,
+                endCorner = if (channels.isEmpty()) 24.dp else 4.dp,
             )
         }
-        items(channels, key = { "channel:${it.key}" }) { channel ->
+        itemsIndexed(channels, key = { _, channel -> "channel:${channel.key}" }) { index, channel ->
             ChannelControl(
                 label = channel.name.ifBlank { channel.key },
                 avatarUrl = channel.avatarUrl,
                 selected = channel.key == selectedKey,
                 onClick = { onSelected(channel.key) },
+                startCorner = 4.dp,
+                endCorner = if (index == channels.lastIndex) 24.dp else 4.dp,
             )
         }
     }
@@ -205,51 +214,62 @@ private fun ChannelControl(
     avatarUrl: String?,
     selected: Boolean,
     onClick: () -> Unit,
+    startCorner: Dp,
+    endCorner: Dp,
     all: Boolean = false,
 ) {
-    val color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-    Column(
-        modifier = Modifier.width(72.dp).clip(MaterialTheme.shapes.medium)
-            .selectable(selected = selected, onClick = onClick, role = Role.RadioButton)
-            .padding(horizontal = 4.dp, vertical = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+    val contentColor =
+        if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.semantics { role = Role.RadioButton; this.selected = selected },
+        shape = RoundedCornerShape(
+            topStart = startCorner, bottomStart = startCorner,
+            topEnd = endCorner, bottomEnd = endCorner,
+        ),
+        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else clusterCardColor(),
+        contentColor = contentColor,
     ) {
-        Box(
-            modifier = Modifier.size(40.dp).clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                .border(2.dp, if (selected) color else Color.Transparent, CircleShape),
-            contentAlignment = Alignment.Center,
+        Column(
+            modifier = Modifier.width(72.dp).padding(horizontal = 4.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            if (all) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_nav_subscriptions),
-                    contentDescription = null,
-                    tint = color,
-                    modifier = Modifier.size(24.dp),
-                )
-            } else {
-                Text(
-                    text = label.take(1).uppercase(),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = color,
-                    modifier = Modifier.clearAndSetSemantics { },
-                )
-                AsyncImage(
-                    model = avatarUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().clip(CircleShape),
-                )
+            Box(
+                modifier = Modifier.size(40.dp).clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (all) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_nav_subscriptions),
+                        contentDescription = null,
+                        tint = contentColor,
+                        modifier = Modifier.size(24.dp),
+                    )
+                } else {
+                    Text(
+                        text = label.take(1).uppercase(),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = contentColor,
+                        modifier = Modifier.clearAndSetSemantics { },
+                    )
+                    AsyncImage(
+                        model = avatarUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().clip(CircleShape),
+                    )
+                }
             }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = contentColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = color,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 

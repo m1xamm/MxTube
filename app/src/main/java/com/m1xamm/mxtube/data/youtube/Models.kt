@@ -30,6 +30,18 @@ data class ChannelTabBatch(
     val hasMore: Boolean,
 )
 
+data class ChannelLink(
+    val label: String,
+    val url: String,
+)
+
+data class ChannelAbout(
+    val country: String? = null,
+    val joinedDate: String? = null,
+    val totalViews: String? = null,
+    val links: List<ChannelLink> = emptyList(),
+)
+
 data class ChannelHeader(
     val key: String,
     val url: String,

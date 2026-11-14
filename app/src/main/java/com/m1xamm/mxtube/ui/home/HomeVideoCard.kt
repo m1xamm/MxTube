@@ -38,6 +38,8 @@ import com.m1xamm.mxtube.ui.common.clusterInnerColor
 import com.m1xamm.mxtube.ui.common.compactCount
 import com.m1xamm.mxtube.ui.common.formatDuration
 import com.m1xamm.mxtube.ui.common.formatRelativeDate
+import com.m1xamm.mxtube.ui.common.heroImage
+import com.m1xamm.mxtube.ui.common.heroTitle
 
 @Composable
 fun HomeVideoCard(
@@ -110,7 +112,8 @@ fun HomeVideoCard(
                         .fillMaxWidth()
                         .aspectRatio(16f / 9f)
                         .clip(RoundedCornerShape(20.dp))
-                        .background(placeholderColor),
+                        .background(placeholderColor)
+                        .heroImage(video.url),
             ) {
                 AsyncImage(
                     model = video.thumbnailUrl,
@@ -141,6 +144,7 @@ fun HomeVideoCard(
 
             Text(
                 text = video.title,
+                modifier = Modifier.heroTitle(video.url, MaterialTheme.typography.titleMedium),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 2,
