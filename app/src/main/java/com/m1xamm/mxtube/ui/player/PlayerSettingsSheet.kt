@@ -99,13 +99,12 @@ private enum class SettingsPage {
 }
 
 private enum class MainEntry(
-    val page: SettingsPage?,
+    val page: SettingsPage,
 ) {
     Quality(SettingsPage.Quality),
     Speed(SettingsPage.Speed),
     Audio(SettingsPage.Audio),
     Subtitles(SettingsPage.Subtitles),
-    More(null),
 }
 
 private const val MIN_SPEED = 0.25f
@@ -319,7 +318,6 @@ private fun MainSettings(
             add(MainEntry.Speed)
             if (info.audioTracks.size > 1) add(MainEntry.Audio)
             add(MainEntry.Subtitles)
-            add(MainEntry.More)
         }
 
     Column(
@@ -337,7 +335,6 @@ private fun MainSettings(
                     MainEntry.Speed -> stringResource(R.string.player_speed)
                     MainEntry.Audio -> stringResource(R.string.player_audio_track)
                     MainEntry.Subtitles -> stringResource(R.string.player_subtitles)
-                    MainEntry.More -> stringResource(R.string.player_more)
                 }
             val value =
                 when (entry) {
@@ -352,15 +349,13 @@ private fun MainSettings(
                         } else {
                             stringResource(R.string.player_subtitles_off)
                         }
-
-                    MainEntry.More -> ""
                 }
             NavigationRow(
                 title = title,
                 value = value,
                 topCorner = if (index == 0) 28.dp else 4.dp,
                 bottomCorner = if (index == entries.lastIndex) 28.dp else 4.dp,
-                onClick = { entry.page?.let(onOpenPage) },
+                onClick = { onOpenPage(entry.page) },
             )
         }
     }

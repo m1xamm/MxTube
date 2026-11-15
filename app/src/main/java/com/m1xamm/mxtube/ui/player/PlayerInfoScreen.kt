@@ -31,19 +31,32 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import com.m1xamm.mxtube.R
 import com.m1xamm.mxtube.data.local.SubscriptionNotificationMode
 import com.m1xamm.mxtube.data.youtube.VideoSummary
+import com.m1xamm.mxtube.ui.common.HeroSource
 import com.m1xamm.mxtube.ui.common.formatRelativeDate
+import com.m1xamm.mxtube.ui.common.heroImage
 import com.m1xamm.mxtube.ui.common.viewsText
 import com.m1xamm.mxtube.ui.search.VideoCluster
 
@@ -166,6 +179,14 @@ private fun PlayerInfoScreen(
             uploaded.takeIf { it.isNotBlank() },
         ).joinToString(" • ")
     val channel = video.uploader.ifBlank { stringResource(R.string.unknown_channel) }
+    var detailsVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(video.url) { detailsVisible = true }
+    val detailsAlpha by
+        animateFloatAsState(
+            targetValue = if (detailsVisible) 1f else 0f,
+            animationSpec = tween(280, delayMillis = 80, easing = FastOutSlowInEasing),
+            label = "player-info-alpha",
+        )
 
     Column(
         modifier =
@@ -180,9 +201,17 @@ private fun PlayerInfoScreen(
                 Modifier
                     .fillMaxWidth()
                     .aspectRatio(16f / 9f)
-                    .background(Color.Black),
+                    .background(Color.Black)
+                    .heroImage(HeroSource.playerKey(video.url)),
             contentAlignment = Alignment.Center,
         ) {
+            AsyncImage(
+                model = video.thumbnailUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.24f)))
             Box(
                 modifier =
                     Modifier
@@ -210,7 +239,8 @@ private fun PlayerInfoScreen(
                 Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .navigationBarsPadding(),
+                    .navigationBarsPadding()
+                    .graphicsLayer { alpha = detailsAlpha },
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {

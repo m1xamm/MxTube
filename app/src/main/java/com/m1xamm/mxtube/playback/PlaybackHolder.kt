@@ -7,6 +7,7 @@ import androidx.media3.exoplayer.ExoPlayer
 
 object PlaybackHolder {
     private var player: ExoPlayer? = null
+    var preparedKey: String? = null
 
     fun player(context: Context): ExoPlayer {
         player?.let { return it }
@@ -25,6 +26,7 @@ object PlaybackHolder {
     }
 
     fun stop() {
+        preparedKey = null
         player?.let {
             it.pause()
             it.stop()

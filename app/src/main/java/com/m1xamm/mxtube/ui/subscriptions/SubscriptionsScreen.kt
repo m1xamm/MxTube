@@ -6,6 +6,7 @@
 package com.m1xamm.mxtube.ui.subscriptions
 
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -46,6 +47,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -73,7 +75,9 @@ import coil3.compose.AsyncImage
 import com.m1xamm.mxtube.R
 import com.m1xamm.mxtube.data.local.SubscriptionEntry
 import com.m1xamm.mxtube.data.youtube.VideoSummary
+import com.m1xamm.mxtube.ui.common.LocalMiniPlayerVisible
 import com.m1xamm.mxtube.ui.common.clusterCardColor
+import com.m1xamm.mxtube.ui.common.ExpressiveRefreshIndicator
 import com.m1xamm.mxtube.ui.home.HomeVideoCard
 import com.m1xamm.mxtube.ui.home.HomeVideoCardSkeleton
 
@@ -120,6 +124,7 @@ private fun SubscriptionsContent(
         }
     }
     val hasFilterError = state.error || state.loadMoreError || state.failedChannels.isNotEmpty()
+    val refreshState = rememberPullToRefreshState()
     LaunchedEffect(
         nearEnd, state.selectedChannelKey, state.videos.size, state.videos.lastOrNull()?.url,
         state.hasMore, state.isLoading, state.isRefreshing, state.isLoadingMore, hasFilterError,
@@ -128,48 +133,58 @@ private fun SubscriptionsContent(
             !state.isLoading && !state.isRefreshing && !state.isLoadingMore && !hasFilterError
         ) onLoadMore()
     }
-    Column(
-        modifier = modifier.fillMaxSize().windowInsetsPadding(
-            WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
-        ),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().height(56.dp).padding(start = 16.dp, end = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(R.string.nav_subscriptions),
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f),
-            )
-            IconButton(onClick = onRefresh, enabled = state.channels.isNotEmpty() && !state.isRefreshing) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_refresh_rounded),
-                    contentDescription = stringResource(R.string.subscriptions_refresh),
-                    modifier = Modifier.size(24.dp),
-                )
-            }
-        }
-        ChannelsStrip(state.channels, state.selectedChannelKey, onChannelSelected)
-        state.channels.firstOrNull { it.key == state.selectedChannelKey }?.let { channel ->
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(channel.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                TextButton(onClick = { onChannelClick(channel.url) }) {
-                    Text(stringResource(R.string.channel_open))
-                }
-            }
-        }
+    Box(modifier.fillMaxSize()) {
         PullToRefreshBox(
             isRefreshing = state.isRefreshing,
             onRefresh = onRefresh,
-            modifier = Modifier.weight(1f).fillMaxWidth(),
+            state = refreshState,
+            modifier = Modifier.fillMaxSize(),
+            indicator = {},
         ) {
-            SubscriptionsList(state, listState, onVideoClick, onRetry)
+        Column(
+            modifier = Modifier.fillMaxSize().windowInsetsPadding(
+                WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
+            ),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().height(56.dp).padding(start = 16.dp, end = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.nav_subscriptions),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = onRefresh, enabled = state.channels.isNotEmpty() && !state.isRefreshing) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_refresh_rounded),
+                        contentDescription = stringResource(R.string.subscriptions_refresh),
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            }
+            ChannelsStrip(state.channels, state.selectedChannelKey, onChannelSelected)
+            state.channels.firstOrNull { it.key == state.selectedChannelKey }?.let { channel ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(channel.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    TextButton(onClick = { onChannelClick(channel.url) }) {
+                        Text(stringResource(R.string.channel_open))
+                    }
+                }
+            }
+            Box(Modifier.weight(1f)) {
+                SubscriptionsList(state, listState, onVideoClick, onRetry)
+            }
         }
+        }
+        ExpressiveRefreshIndicator(
+            state = refreshState,
+            isRefreshing = state.isRefreshing,
+        )
     }
 }
 
@@ -192,14 +207,15 @@ private fun ChannelsStrip(
                 onClick = { onSelected(null) },
                 all = true,
                 startCorner = 24.dp,
-                endCorner = if (channels.isEmpty()) 24.dp else 4.dp,
+                endCorner = 4.dp,
             )
         }
         itemsIndexed(channels, key = { _, channel -> "channel:${channel.key}" }) { index, channel ->
+            val selected = channel.key == selectedKey
             ChannelControl(
                 label = channel.name.ifBlank { channel.key },
                 avatarUrl = channel.avatarUrl,
-                selected = channel.key == selectedKey,
+                selected = selected,
                 onClick = { onSelected(channel.key) },
                 startCorner = 4.dp,
                 endCorner = if (index == channels.lastIndex) 24.dp else 4.dp,
@@ -220,10 +236,16 @@ private fun ChannelControl(
 ) {
     val contentColor =
         if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface
+    val width by
+        animateDpAsState(
+            targetValue = if (selected) 96.dp else 72.dp,
+            animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+            label = "channel-chip-width",
+        )
     Surface(
         onClick = onClick,
         modifier = Modifier.semantics { role = Role.RadioButton; this.selected = selected },
-        shape = RoundedCornerShape(
+        shape = if (selected) RoundedCornerShape(24.dp) else RoundedCornerShape(
             topStart = startCorner, bottomStart = startCorner,
             topEnd = endCorner, bottomEnd = endCorner,
         ),
@@ -231,7 +253,7 @@ private fun ChannelControl(
         contentColor = contentColor,
     ) {
         Column(
-            modifier = Modifier.width(72.dp).padding(horizontal = 4.dp, vertical = 8.dp),
+            modifier = Modifier.width(width).padding(horizontal = 4.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Box(
@@ -280,7 +302,8 @@ private fun SubscriptionsList(
     onVideoClick: (VideoSummary, List<VideoSummary>) -> Unit,
     onRetry: () -> Unit,
 ) {
-    val bottomPadding = 96.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val bottomPadding = (if (LocalMiniPlayerVisible.current) 160.dp else 96.dp) +
+        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val isBusy = state.isLoading || state.isRefreshing || state.isLoadingMore
     val hasFilterError = state.error || state.loadMoreError || state.failedChannels.isNotEmpty()
     val showSkeleton = state.videos.isEmpty() && (isBusy || (state.hasMore && !hasFilterError))

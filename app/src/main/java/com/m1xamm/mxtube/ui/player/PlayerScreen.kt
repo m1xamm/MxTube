@@ -95,6 +95,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -164,6 +165,9 @@ import com.m1xamm.mxtube.ui.common.compactCount
 import com.m1xamm.mxtube.ui.common.formatDuration
 import com.m1xamm.mxtube.ui.common.formatRelativeDate
 import com.m1xamm.mxtube.ui.common.formatTime
+import com.m1xamm.mxtube.ui.common.heroImage
+import com.m1xamm.mxtube.ui.common.HeroSource
+import com.m1xamm.mxtube.ui.common.PlayPauseIcon
 import com.m1xamm.mxtube.ui.common.viewsText
 import com.m1xamm.mxtube.ui.search.VideoCluster
 import dev.chrisbanes.haze.HazeInput
@@ -265,7 +269,19 @@ fun PlayerScreen(
     var settingsOpen by remember { mutableStateOf(false) }
     var playbackError by remember { mutableStateOf(false) }
     var reloadToken by remember { mutableIntStateOf(0) }
-    var hasSource by remember { mutableStateOf(false) }
+    var coverVisible by remember { mutableStateOf(true) }
+    var detailsVisible by remember { mutableStateOf(false) }
+    val detailsAlpha by
+        animateFloatAsState(
+            targetValue = if (detailsVisible) 1f else 0f,
+            animationSpec = tween(280, delayMillis = 80, easing = FastOutSlowInEasing),
+            label = "player-details-alpha",
+        )
+    LaunchedEffect(video.url) {
+        coverVisible = true
+        detailsVisible = false
+        detailsVisible = true
+    }
 
     val handleBack: () -> Unit = {
         if (subscriptionMenuOpen) {
@@ -344,6 +360,10 @@ fun PlayerScreen(
                 override fun onTracksChanged(tracks: Tracks) {
                     applySubtitleSelection(exoPlayer, currentSubtitle.value)
                 }
+
+                override fun onRenderedFirstFrame() {
+                    coverVisible = false
+                }
             }
 
         exoPlayer.addListener(listener)
@@ -356,17 +376,21 @@ fun PlayerScreen(
         val audioTrack = info.audioTracks.getOrNull(state.selectedAudioTrackIndex)
 
         try {
-            val resumePosition = if (hasSource) exoPlayer.currentPosition else 0L
-            val resumePlaying = if (hasSource) exoPlayer.playWhenReady else true
+            val prepared =
+                PlaybackHolder.preparedKey == video.url &&
+                    exoPlayer.mediaItemCount > 0 &&
+                    exoPlayer.playbackState != Player.STATE_IDLE
+            val resumePosition = if (prepared) exoPlayer.currentPosition else 0L
+            val resumePlaying = if (prepared) exoPlayer.playWhenReady else true
             val source = buildMediaSource(context, quality, audioTrack, info)
 
             exoPlayer.setMediaSource(source)
             exoPlayer.prepare()
-            if (hasSource) exoPlayer.seekTo(resumePosition)
+            if (prepared) exoPlayer.seekTo(resumePosition)
             exoPlayer.setPlaybackSpeed(speed)
             exoPlayer.playWhenReady = resumePlaying
-            if (!hasSource) exoPlayer.play()
-            hasSource = true
+            if (!prepared) exoPlayer.play()
+            PlaybackHolder.preparedKey = video.url
             playbackError = false
         } catch (_: Exception) {
             playbackError = true
@@ -533,6 +557,9 @@ fun PlayerScreen(
                                 exoPlayer = exoPlayer,
                                 hazeState = hazeState,
                                 title = info.title.ifBlank { video.title },
+                                videoUrl = video.url,
+                                coverUrl = video.thumbnailUrl ?: info.thumbnailUrl,
+                                coverVisible = coverVisible,
                                 isFullscreen = true,
                                 onBack = handleBack,
                                 onToggleFullscreen = toggleFullscreen,
@@ -590,6 +617,9 @@ fun PlayerScreen(
                                 exoPlayer = exoPlayer,
                                 hazeState = hazeState,
                                 title = info.title.ifBlank { video.title },
+                                videoUrl = video.url,
+                                coverUrl = video.thumbnailUrl ?: info.thumbnailUrl,
+                                coverVisible = coverVisible,
                                 isFullscreen = false,
                                 onBack = handleBack,
                                 onToggleFullscreen = toggleFullscreen,
@@ -635,7 +665,10 @@ fun PlayerScreen(
                                     controlsVisible = false
                                     subscriptionMenuOpen = true
                                 },
-                                modifier = Modifier.weight(1f),
+                                modifier =
+                                    Modifier
+                                        .weight(1f)
+                                        .graphicsLayer { alpha = detailsAlpha },
                             )
                         }
                     }
@@ -685,6 +718,9 @@ private fun PlayerStage(
     exoPlayer: ExoPlayer,
     hazeState: HazeState,
     title: String,
+    videoUrl: String,
+    coverUrl: String?,
+    coverVisible: Boolean,
     isFullscreen: Boolean,
     onBack: () -> Unit,
     onToggleFullscreen: () -> Unit,
@@ -734,12 +770,6 @@ private fun PlayerStage(
         zoomScale = 1f
         zoomOffset = Offset.Zero
     }
-    val playButtonState =
-        when {
-            isBuffering -> PlayButtonState.Buffering
-            isPlaying -> PlayButtonState.Playing
-            else -> PlayButtonState.Paused
-        }
 
     LaunchedEffect(feedbackToken) {
         if (feedbackToken > 0) {
@@ -765,6 +795,8 @@ private fun PlayerStage(
         modifier =
             modifier
                 .background(Color.Black)
+                .clipToBounds()
+                .heroImage(HeroSource.playerKey(videoUrl))
                 .then(
                     if (onRelatedVisibilityChanged != null) {
                         Modifier.pointerInput(Unit) {
@@ -836,45 +868,21 @@ private fun PlayerStage(
                         translationX = zoomOffset.x
                         translationY = zoomOffset.y
                     }
-                    .pointerInput(Unit) {
-                        awaitEachGesture {
-                            awaitFirstDown(requireUnconsumed = false)
-                            var scale = zoomScale
-                            var offset = zoomOffset
-                            do {
-                                val event = awaitPointerEvent()
-                                val pointers = event.changes.count { it.pressed }
-                                val zoomChange = event.calculateZoom()
-                                val panChange = event.calculatePan()
-                                if (pointers >= 2) {
-                                    scale = (scale * zoomChange).coerceIn(1f, 4f)
-                                    val maxX = (scale - 1f) * size.width / 2f
-                                    val maxY = (scale - 1f) * size.height / 2f
-                                    offset = Offset(
-                                        (offset.x + panChange.x).coerceIn(-maxX, maxX),
-                                        (offset.y + panChange.y).coerceIn(-maxY, maxY),
-                                    )
-                                    event.changes.forEach { it.consume() }
-                                } else if (scale > 1f) {
-                                    val maxX = (scale - 1f) * size.width / 2f
-                                    val maxY = (scale - 1f) * size.height / 2f
-                                    offset = Offset(
-                                        (offset.x + panChange.x).coerceIn(-maxX, maxX),
-                                        (offset.y + panChange.y).coerceIn(-maxY, maxY),
-                                    )
-                                    event.changes.forEach { it.consume() }
-                                }
-                                zoomScale = scale
-                                zoomOffset = offset
-                            } while (event.changes.any { it.pressed })
-                            if (scale <= 1.01f) {
-                                zoomScale = 1f
-                                zoomOffset = Offset.Zero
-                            }
-                        }
-                    }
                     .hazeSource(hazeState),
         )
+
+        AnimatedVisibility(
+            visible = coverVisible,
+            enter = androidx.compose.animation.EnterTransition.None,
+            exit = fadeOut(tween(240)),
+        ) {
+            AsyncImage(
+                model = coverUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
 
         Box(
             modifier =
@@ -891,6 +899,45 @@ private fun PlayerStage(
                                 )
                             },
                         )
+                    }
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            var scale = zoomScale
+                            var offset = zoomOffset
+                            do {
+                                val event = awaitPointerEvent()
+                                val pointers = event.changes.count { it.pressed }
+                                val zoomChange = event.calculateZoom()
+                                val panChange = event.calculatePan()
+                                if (pointers >= 2) {
+                                    scale = (scale * zoomChange).coerceIn(1f, 4f)
+                                    val maxX = (scale - 1f) * size.width / 2f
+                                    val maxY = (scale - 1f) * size.height / 2f
+                                    offset =
+                                        Offset(
+                                            (offset.x + panChange.x).coerceIn(-maxX, maxX),
+                                            (offset.y + panChange.y).coerceIn(-maxY, maxY),
+                                        )
+                                    event.changes.forEach { it.consume() }
+                                } else if (scale > 1f) {
+                                    val maxX = (scale - 1f) * size.width / 2f
+                                    val maxY = (scale - 1f) * size.height / 2f
+                                    offset =
+                                        Offset(
+                                            (offset.x + panChange.x).coerceIn(-maxX, maxX),
+                                            (offset.y + panChange.y).coerceIn(-maxY, maxY),
+                                        )
+                                    event.changes.forEach { it.consume() }
+                                }
+                                zoomScale = scale
+                                zoomOffset = offset
+                            } while (event.changes.any { it.pressed })
+                            if (scale <= 1.01f) {
+                                zoomScale = 1f
+                                zoomOffset = Offset.Zero
+                            }
+                        }
                     },
         )
 
@@ -1009,36 +1056,24 @@ private fun PlayerStage(
                     contentColor = Color.White,
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        AnimatedContent(
-                            targetState = playButtonState,
-                            transitionSpec = {
-                                (fadeIn(tween(120)) + scaleIn(tween(120), initialScale = 0.7f)) togetherWith
-                                    (fadeOut(tween(90)) + scaleOut(tween(90), targetScale = 0.7f))
-                            },
-                            label = "playPause",
-                        ) { state ->
-                            when (state) {
-                                PlayButtonState.Buffering ->
-                                    LoadingIndicator(
-                                        modifier = Modifier.size(28.dp),
-                                        color = Color.White,
-                                    )
-
-                                PlayButtonState.Playing ->
-                                    Icon(
-                                        painter = painterResource(R.drawable.ic_pause_rounded),
-                                        contentDescription = stringResource(R.string.player_pause),
-                                        modifier = Modifier.size(28.dp),
-                                        tint = Color.White,
-                                    )
-
-                                PlayButtonState.Paused ->
-                                    Icon(
-                                        painter = painterResource(R.drawable.ic_play_arrow_rounded),
-                                        contentDescription = stringResource(R.string.player_play),
-                                        modifier = Modifier.size(32.dp),
-                                        tint = Color.White,
-                                    )
+                        androidx.compose.animation.Crossfade(
+                            targetState = isBuffering,
+                            animationSpec = tween(140, easing = FastOutSlowInEasing),
+                            label = "play-buffering",
+                        ) { buffering ->
+                            if (buffering) {
+                                LoadingIndicator(
+                                    modifier = Modifier.size(28.dp),
+                                    color = Color.White,
+                                )
+                            } else {
+                                PlayPauseIcon(
+                                    playing = isPlaying,
+                                    modifier = Modifier.size(30.dp),
+                                    tint = Color.White,
+                                    contentDescription =
+                                        stringResource(if (isPlaying) R.string.player_pause else R.string.player_play),
+                                )
                             }
                         }
                     }
@@ -1675,90 +1710,14 @@ internal fun SubscribeButton(
     channelName: String,
     onClick: () -> Unit,
 ) {
-    val description = stringResource(R.string.subscription_manage, channelName)
-    val modeLabel = subscriptionNotificationLabel(notificationMode)
-    val revealColor =
-        if (subscribed) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.primary
-    val baseColor =
-        if (subscribed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer
-    val contentColor =
-        if (subscribed) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onPrimary
-    var origin by remember { mutableStateOf(Offset.Zero) }
-    val progress = remember { Animatable(1f) }
-    var first by remember { mutableStateOf(true) }
-    val currentOnClick = rememberUpdatedState(onClick)
-    LaunchedEffect(subscribed) {
-        if (first) {
-            first = false
-        } else {
-            progress.snapTo(0f)
-            progress.animateTo(1f, tween(320, easing = FastOutSlowInEasing))
-        }
-    }
-    Box(
-        modifier =
-            Modifier
-                .heightIn(min = 36.dp)
-                .clip(CircleShape)
-                .background(baseColor)
-                .drawBehind {
-                    drawCircle(
-                        color = revealColor,
-                        radius = progress.value * size.maxDimension,
-                        center = if (origin == Offset.Zero) center else origin,
-                    )
-                }
-                .pointerInput(pending) {
-                    if (!pending) detectTapGestures { offset ->
-                        origin = offset
-                        currentOnClick.value()
-                    }
-                }
-                .then(
-                    if (subscribed) {
-                        Modifier.semantics {
-                            contentDescription = description
-                            stateDescription = modeLabel
-                        }
-                    } else Modifier,
-                )
-                .padding(horizontal = 12.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        AnimatedContent(
-            targetState = subscribed,
-            transitionSpec = {
-                (fadeIn(tween(160)) + scaleIn(initialScale = 0.8f)) togetherWith
-                    (fadeOut(tween(120)) + scaleOut(targetScale = 0.8f))
-            },
-            label = "subscribe-morph",
-        ) { sub ->
-            if (sub) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        painter = painterResource(subscriptionNotificationIcon(notificationMode)),
-                        contentDescription = null,
-                        modifier = Modifier.size(24.dp),
-                        tint = contentColor,
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Icon(
-                        painter = painterResource(R.drawable.ic_expand_more_rounded),
-                        contentDescription = null,
-                        modifier = Modifier.size(24.dp),
-                        tint = contentColor,
-                    )
-                }
-            } else {
-                Text(
-                    text = stringResource(R.string.subscribe),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = contentColor,
-                    maxLines = 1,
-                )
-            }
-        }
-    }
+    SubscribePill(
+        subscribed = subscribed,
+        pending = pending,
+        notificationMode = notificationMode,
+        onClick = onClick,
+        compact = true,
+        channelName = channelName,
+    )
 }
 
 private fun buildMediaSource(

@@ -11,11 +11,14 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -25,6 +28,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,6 +38,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -124,15 +129,16 @@ import com.m1xamm.mxtube.data.youtube.VideoSummary
 import com.m1xamm.mxtube.notifications.SubscriptionNotificationScheduler
 import com.m1xamm.mxtube.playback.PlaybackHolder
 import com.m1xamm.mxtube.ui.common.GlassBottomSheet
+import com.m1xamm.mxtube.ui.common.ExpressiveRefreshIndicator
+import com.m1xamm.mxtube.ui.common.LocalMiniPlayerVisible
 import com.m1xamm.mxtube.ui.common.clusterCardColor
 import com.m1xamm.mxtube.ui.common.clusterInnerColor
 import com.m1xamm.mxtube.ui.common.compactCount
 import com.m1xamm.mxtube.ui.common.formatDuration
 import com.m1xamm.mxtube.ui.common.formatRelativeDate
 import com.m1xamm.mxtube.ui.common.heroImage
-import com.m1xamm.mxtube.ui.common.heroTitle
+import com.m1xamm.mxtube.ui.player.SubscribePill
 import com.m1xamm.mxtube.ui.player.SubscriptionMenuSheet
-import com.m1xamm.mxtube.ui.player.subscriptionNotificationIcon
 import com.m1xamm.mxtube.ui.search.VideoRow
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
@@ -146,10 +152,8 @@ fun ChannelScreen(
     viewModel: ChannelViewModel,
     onBack: () -> Unit,
     onVideoClick: (VideoSummary, List<VideoSummary>) -> Unit,
-    miniPlayer: VideoSummary?,
-    onReturnToPlayer: () -> Unit,
-    onClosePlayer: () -> Unit,
     modifier: Modifier = Modifier,
+    onSheetVisibilityChange: (Boolean) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val header = state.header
@@ -161,7 +165,6 @@ fun ChannelScreen(
     val livesList = rememberLazyListState()
     val postsList = rememberLazyListState()
     val tabRowState = rememberLazyListState()
-    val pinnedTabRowState = rememberLazyListState()
     var menuOpen by remember { mutableStateOf(false) }
     var aboutOpen by remember { mutableStateOf(false) }
     var searchOpen by remember { mutableStateOf(false) }
@@ -169,6 +172,7 @@ fun ChannelScreen(
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val miniVisible = LocalMiniPlayerVisible.current
     var notificationsEnabled by remember { mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled()) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         notificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
@@ -191,6 +195,8 @@ fun ChannelScreen(
         when {
             aboutOpen -> aboutOpen = false
             overflowOpen -> overflowOpen = false
+            menuOpen -> menuOpen = false
+            searchOpen -> searchOpen = false
             state.selectedPlaylist != null -> viewModel.closePlaylist()
             else -> onBack()
         }
@@ -200,6 +206,9 @@ fun ChannelScreen(
             ((state.videos.isEmpty() && state.hasMore) || (state.playlists.isEmpty() && state.hasMorePlaylists))
         ) viewModel.loadMore()
     }
+    val sheetVisible = menuOpen || searchOpen
+    LaunchedEffect(sheetVisible) { onSheetVisibilityChange(sheetVisible) }
+    DisposableEffect(Unit) { onDispose { onSheetVisibilityChange(false) } }
     val activeList = when (state.selectedTab) {
         ChannelProfileTab.Home -> homeList
         ChannelProfileTab.Videos -> videosList
@@ -208,19 +217,15 @@ fun ChannelScreen(
         ChannelProfileTab.Lives -> livesList
         ChannelProfileTab.Posts -> postsList
     }
-    val tabsIndex = (if (header?.bannerUrl?.isNotBlank() == true) 1 else 0) + 1
-    val scrolledPastHeader by remember(activeList, tabsIndex) {
-        derivedStateOf { activeList.firstVisibleItemIndex >= tabsIndex }
-    }
-    val tabsVisible = state.selectedPlaylist == null && state.availableTabs.size > 1
-    val pinnedTabs = tabsVisible && header != null && scrolledPastHeader
-    LaunchedEffect(pinnedTabs) {
-        if (pinnedTabs) {
-            pinnedTabRowState.scrollToItem(tabRowState.firstVisibleItemIndex, tabRowState.firstVisibleItemScrollOffset)
-        } else {
-            tabRowState.scrollToItem(pinnedTabRowState.firstVisibleItemIndex, pinnedTabRowState.firstVisibleItemScrollOffset)
+    val banner = header?.bannerUrl?.takeIf { it.isNotBlank() }
+    val headerIndex = if (banner != null) 1 else 0
+    val scrolledPastHeader by remember(activeList, headerIndex) {
+        derivedStateOf {
+            activeList.firstVisibleItemIndex > headerIndex ||
+                (activeList.firstVisibleItemIndex == headerIndex && activeList.firstVisibleItemScrollOffset > 0)
         }
     }
+    val tabsVisible = state.selectedPlaylist == null && state.availableTabs.size > 1
     val shareUrl = state.selectedPlaylist?.url ?: header?.url
     val onShare: () -> Unit = {
         shareUrl?.takeIf { it.startsWith("https://") || it.startsWith("http://") }?.let { url ->
@@ -242,56 +247,57 @@ fun ChannelScreen(
     Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         val selectedPlaylist = state.selectedPlaylist
         val refreshState = rememberPullToRefreshState()
+        val busy =
+            state.isRefreshing ||
+                state.isLoading ||
+                state.isLoadingVideos ||
+                state.isLoadingPlaylists ||
+                state.isLoadingPlaylist
         PullToRefreshBox(
-            isRefreshing = state.isRefreshing || state.isLoadingPlaylist,
+            isRefreshing = busy,
             onRefresh = viewModel::refresh,
             state = refreshState,
             modifier = Modifier.fillMaxSize(),
-            indicator = {
-                val busy = state.isRefreshing || state.isLoadingPlaylist
-                val progress = if (busy) 1f else refreshState.distanceFraction.coerceIn(0f, 1f)
-                if (progress > 0f) {
-                    LoadingIndicator(
-                        modifier = Modifier.align(Alignment.TopCenter)
-                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
-                            .padding(top = 64.dp)
-                            .size(40.dp)
-                            .graphicsLayer { alpha = progress },
-                    )
-                }
-            },
+            indicator = {},
         ) {
-            if (selectedPlaylist != null) {
-                key(selectedPlaylist.url) {
-                    PlaylistDetailList(
-                        state = state,
-                        playlist = selectedPlaylist,
-                        haze = haze,
-                        hasMiniPlayer = miniPlayer != null,
-                        onVideoClick = onVideoClick,
-                        onRetry = viewModel::retryPlaylist,
-                        onLoadMore = viewModel::loadMore,
-                    )
-                }
-            } else {
-                when (state.selectedTab) {
-                    ChannelProfileTab.Home -> ChannelList(homeList, state, haze, miniPlayer != null, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
-                        homeContent(state, onVideoClick, viewModel::openPlaylist, viewModel::selectTab, viewModel::retryVideos, viewModel::retryPlaylists)
+            Box(Modifier.fillMaxSize().hazeSource(haze)) {
+                if (selectedPlaylist != null) {
+                    key(selectedPlaylist.url) {
+                        PlaylistDetailList(
+                            state = state,
+                            playlist = selectedPlaylist,
+                            hasMiniPlayer = miniVisible,
+                            onVideoClick = onVideoClick,
+                            onRetry = viewModel::retryPlaylist,
+                            onLoadMore = viewModel::loadMore,
+                        )
                     }
-                    ChannelProfileTab.Videos -> ChannelList(videosList, state, haze, miniPlayer != null, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
-                        videosContent(state, onVideoClick, viewModel::retryVideos)
-                    }
-                    ChannelProfileTab.Playlists -> ChannelList(playlistsList, state, haze, miniPlayer != null, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
-                        playlistsContent(state, viewModel::openPlaylist, viewModel::retryPlaylists)
-                    }
-                    ChannelProfileTab.Shorts -> ChannelList(shortsList, state, haze, miniPlayer != null, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
-                        item(key = "shorts_soon") { EmptyItem(stringResource(R.string.section_soon)) }
-                    }
-                    ChannelProfileTab.Lives -> ChannelList(livesList, state, haze, miniPlayer != null, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
-                        item(key = "lives_soon") { EmptyItem(stringResource(R.string.section_soon)) }
-                    }
-                    ChannelProfileTab.Posts -> ChannelList(postsList, state, haze, miniPlayer != null, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
-                        item(key = "posts_soon") { EmptyItem(stringResource(R.string.section_soon)) }
+                } else {
+                    Crossfade(
+                        targetState = state.selectedTab,
+                        animationSpec = tween(180, easing = FastOutSlowInEasing),
+                        label = "channel-tab-content",
+                    ) { tab ->
+                        when (tab) {
+                            ChannelProfileTab.Home -> ChannelList(homeList, state, miniVisible, tabsVisible, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
+                                homeContent(state, onVideoClick, viewModel::openPlaylist, viewModel::selectTab, viewModel::retryVideos, viewModel::retryPlaylists)
+                            }
+                            ChannelProfileTab.Videos -> ChannelList(videosList, state, miniVisible, tabsVisible, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
+                                videosContent(state, onVideoClick, viewModel::retryVideos)
+                            }
+                            ChannelProfileTab.Playlists -> ChannelList(playlistsList, state, miniVisible, tabsVisible, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
+                                playlistsContent(state, viewModel::openPlaylist, viewModel::retryPlaylists)
+                            }
+                            ChannelProfileTab.Shorts -> ChannelList(shortsList, state, miniVisible, tabsVisible, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
+                                item(key = "shorts_soon") { EmptyItem(stringResource(R.string.section_soon)) }
+                            }
+                            ChannelProfileTab.Lives -> ChannelList(livesList, state, miniVisible, tabsVisible, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
+                                item(key = "lives_soon") { EmptyItem(stringResource(R.string.section_soon)) }
+                            }
+                            ChannelProfileTab.Posts -> ChannelList(postsList, state, miniVisible, tabsVisible, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
+                                item(key = "posts_soon") { EmptyItem(stringResource(R.string.section_soon)) }
+                            }
+                        }
                     }
                 }
             }
@@ -305,12 +311,24 @@ fun ChannelScreen(
                 ),
             )
         }
+        val topInset =
+            WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding()
+        Box(
+            Modifier.align(Alignment.TopCenter).fillMaxWidth()
+                .height(topInset + 8.dp)
+                .background(MaterialTheme.colorScheme.background),
+        )
         Column(
             modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
         ) {
             ChannelActionToolbar(
-                title = selectedPlaylist?.name ?: if (scrolledPastHeader) header?.name.orEmpty() else "",
+                title = selectedPlaylist?.name ?: header?.name.orEmpty(),
+                titleVisible = selectedPlaylist != null || scrolledPastHeader,
+                tabsVisible = tabsVisible,
+                state = state,
+                tabRowState = tabRowState,
+                onSelectTab = viewModel::selectTab,
                 expanded = overflowOpen,
                 canShare = shareUrl != null,
                 hasChannel = header != null,
@@ -354,19 +372,15 @@ fun ChannelScreen(
                     aboutOpen = true
                 },
             )
-            if (pinnedTabs) {
-                Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
-                    ChannelTabGroup(state, viewModel::selectTab, pinnedTabRowState)
-                }
-            }
         }
-        miniPlayer?.let { video ->
-            ChannelMiniPlayer(video, haze, onReturnToPlayer, onClosePlayer, Modifier.align(Alignment.BottomCenter))
-        }
+        ExpressiveRefreshIndicator(
+            state = refreshState,
+            isRefreshing = busy,
+        )
         SnackbarHost(
             snackbar,
             Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
-                .padding(bottom = if (miniPlayer != null) 72.dp else 0.dp),
+                .padding(bottom = if (miniVisible) 136.dp else 0.dp),
         ) { data ->
             GlassSnackbar(data, haze)
         }
@@ -398,6 +412,11 @@ fun ChannelScreen(
 @Composable
 private fun ChannelActionToolbar(
     title: String,
+    titleVisible: Boolean,
+    tabsVisible: Boolean,
+    state: ChannelUiState,
+    tabRowState: androidx.compose.foundation.lazy.LazyListState,
+    onSelectTab: (ChannelProfileTab) -> Unit,
     expanded: Boolean,
     canShare: Boolean,
     hasChannel: Boolean,
@@ -416,10 +435,15 @@ private fun ChannelActionToolbar(
         animationSpec = motion.defaultSpatialSpec(),
         label = "channel-toolbar-corner",
     )
+    val titleAlpha by animateFloatAsState(
+        targetValue = if (titleVisible) 1f else 0f,
+        animationSpec = motion.defaultEffectsSpec(),
+        label = "channel-toolbar-title",
+    )
     Column(
         Modifier.padding(8.dp).fillMaxWidth().clip(RoundedCornerShape(corner))
             .hazeBlur(input = HazeInput.Sources(haze), style = HazeMaterials.ultraThin())
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.32f))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.48f))
             .clickable(remember { MutableInteractionSource() }, indication = null, onClick = {}),
     ) {
         Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -428,7 +452,7 @@ private fun ChannelActionToolbar(
             }
             Text(
                 title,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).graphicsLayer { alpha = titleAlpha },
                 style = MaterialTheme.typography.titleSmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -439,6 +463,9 @@ private fun ChannelActionToolbar(
             IconButton(onClick = onToggleMenu) {
                 MorphingOverflowIcon(expanded)
             }
+        }
+        if (tabsVisible) {
+            ChannelTabGroup(state, onSelectTab, tabRowState, Modifier.padding(bottom = 4.dp))
         }
         AnimatedVisibility(
             visible = expanded,
@@ -538,10 +565,15 @@ private fun MorphingOverflowIcon(expanded: Boolean) {
 }
 
 @Composable
-private fun ChannelTabGroup(state: ChannelUiState, onSelectTab: (ChannelProfileTab) -> Unit, listState: androidx.compose.foundation.lazy.LazyListState) {
+private fun ChannelTabGroup(
+    state: ChannelUiState,
+    onSelectTab: (ChannelProfileTab) -> Unit,
+    listState: androidx.compose.foundation.lazy.LazyListState,
+    modifier: Modifier = Modifier,
+) {
     LazyRow(
         state = listState,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
     ) {
@@ -588,8 +620,8 @@ private fun ChannelTabGroup(state: ChannelUiState, onSelectTab: (ChannelProfileT
 private fun ChannelList(
     list: androidx.compose.foundation.lazy.LazyListState,
     state: ChannelUiState,
-    haze: HazeState,
     hasMiniPlayer: Boolean,
+    hasTabs: Boolean,
     onNearEnd: () -> Unit,
     onRetryMetadata: () -> Unit,
     onAbout: () -> Unit,
@@ -610,13 +642,15 @@ private fun ChannelList(
     }
     val header = state.header
     val banner = header?.bannerUrl?.takeIf { it.isNotBlank() }
-    val tabsVisible = state.selectedPlaylist == null && state.availableTabs.size > 1
     LazyColumn(
         state = list,
-        modifier = Modifier.fillMaxSize().hazeSource(haze).windowInsetsPadding(
+        modifier = Modifier.fillMaxSize().windowInsetsPadding(
             WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
         ),
-        contentPadding = PaddingValues(top = 72.dp, bottom = if (hasMiniPlayer) 96.dp else 32.dp),
+        contentPadding = PaddingValues(
+            top = if (hasTabs) 116.dp else 72.dp,
+            bottom = if (hasMiniPlayer) 160.dp else 32.dp,
+        ),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         if (banner != null) {
@@ -631,12 +665,6 @@ private fun ChannelList(
         }
         if (header != null) {
             item(key = "header") { ChannelHeaderContent(header, state, onAbout, onSubscribe) }
-        }
-        if (tabsVisible) {
-            item(key = "tabs") { ChannelTabGroup(state, onSelectTab, tabRowState) }
-        }
-        if (state.isLoading) {
-            item(key = "metadata_loading") { LoadingItem() }
         }
         if (state.error) {
             item(key = "metadata_error") { ErrorItem(stringResource(R.string.channel_error), onRetryMetadata) }
@@ -707,27 +735,14 @@ private fun ChannelHeaderContent(
                 TextButton(onClick = onAbout) { Text(stringResource(R.string.channel_more)) }
             }
         }
-        SubscribeButton(state, onSubscribe)
-    }
-}
-
-@Composable
-private fun SubscribeButton(state: ChannelUiState, onSubscribe: () -> Unit) {
-    Button(
-        onClick = onSubscribe,
-        modifier = Modifier.fillMaxWidth(),
-        shape = CircleShape,
-        colors = if (state.isSubscribed) ButtonDefaults.filledTonalButtonColors() else ButtonDefaults.buttonColors(),
-    ) {
-        if (state.isSubscribed) {
-            Icon(painterResource(subscriptionNotificationIcon(state.notificationMode)), contentDescription = null, modifier = Modifier.size(24.dp))
-            Spacer(Modifier.width(8.dp))
-        }
-        Text(stringResource(if (state.isSubscribed) R.string.subscribed else R.string.subscribe))
-        if (state.isSubscribed) {
-            Spacer(Modifier.width(8.dp))
-            Icon(painterResource(R.drawable.ic_expand_more_rounded), contentDescription = null, modifier = Modifier.size(24.dp))
-        }
+        SubscribePill(
+            subscribed = state.isSubscribed,
+            pending = false,
+            notificationMode = state.notificationMode,
+            onClick = onSubscribe,
+            fullWidth = true,
+            channelName = header.name,
+        )
     }
 }
 
@@ -740,7 +755,7 @@ private fun LazyListScope.homeContent(
     onRetryPlaylists: () -> Unit,
 ) {
     if (state.isLoadingVideos || state.isLoadingPlaylists) {
-        item(key = "home_loading") { LoadingItem() }
+        item(key = "home_skeleton_space") { Spacer(Modifier.height(8.dp)) }
     }
     if (state.videosError && state.videos.isEmpty()) {
         item(key = "home_videos_error") { ErrorItem(stringResource(R.string.channel_videos_error), onRetryVideos) }
@@ -790,7 +805,6 @@ private fun LazyListScope.videosContent(
     onVideoClick: (VideoSummary, List<VideoSummary>) -> Unit,
     onRetry: () -> Unit,
 ) {
-    if (state.isLoadingVideos) item(key = "videos_loading") { LoadingItem() }
     if (state.videosError && state.videos.isEmpty()) {
         item(key = "videos_error") { ErrorItem(stringResource(R.string.channel_videos_error), onRetry) }
     }
@@ -819,7 +833,6 @@ private fun LazyListScope.playlistsContent(
     onOpenPlaylist: (PlaylistSummary) -> Unit,
     onRetry: () -> Unit,
 ) {
-    if (state.isLoadingPlaylists) item(key = "playlists_loading") { LoadingItem() }
     if (state.playlistsError && state.playlists.isEmpty()) {
         item(key = "playlists_error") { ErrorItem(stringResource(R.string.channel_playlists_error), onRetry) }
     }
@@ -854,7 +867,6 @@ private fun LazyListScope.homePagination(state: ChannelUiState, onRetryVideos: (
 private fun PlaylistDetailList(
     state: ChannelUiState,
     playlist: PlaylistSummary,
-    haze: HazeState,
     hasMiniPlayer: Boolean,
     onVideoClick: (VideoSummary, List<VideoSummary>) -> Unit,
     onRetry: () -> Unit,
@@ -869,32 +881,111 @@ private fun PlaylistDetailList(
     }
     LazyColumn(
         state = list,
-        modifier = Modifier.fillMaxSize().hazeSource(haze).windowInsetsPadding(
+        modifier = Modifier.fillMaxSize().windowInsetsPadding(
             WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
         ),
-        contentPadding = PaddingValues(top = 72.dp, bottom = if (hasMiniPlayer) 96.dp else 32.dp),
+        contentPadding = PaddingValues(top = 72.dp, bottom = if (hasMiniPlayer) 160.dp else 32.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         item(key = "playlist_header") {
-            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                val placeholder = ColorPainter(clusterInnerColor())
+            val placeholder = ColorPainter(clusterInnerColor())
+            val first = state.playlistVideos.firstOrNull()
+            Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
                 AsyncImage(
                     model = playlist.thumbnailUrl,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     placeholder = placeholder,
                     error = placeholder,
-                    modifier = Modifier.width(120.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(16.dp)),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .aspectRatio(16f / 9f)
+                            .clip(RoundedCornerShape(24.dp)),
                 )
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(playlist.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    if (playlist.videoCount >= 0) {
-                        Text(stringResource(R.string.channel_video_count, compactCount(playlist.videoCount)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        playlist.name,
+                        style = MaterialTheme.typography.headlineSmall,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    val owner = playlist.uploader ?: state.header?.name
+                    if (!owner.isNullOrBlank()) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            state.header?.avatarUrl?.let { avatar ->
+                                AsyncImage(
+                                    model = avatar,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    placeholder = placeholder,
+                                    error = placeholder,
+                                    modifier =
+                                        Modifier.size(24.dp).clip(CircleShape),
+                                )
+                            }
+                            Text(
+                                owner,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                    Text(
+                        buildString {
+                            append(stringResource(R.string.playlist_label))
+                            if (playlist.videoCount >= 0) {
+                                append(" • ")
+                                append(
+                                    stringResource(
+                                        R.string.channel_video_count,
+                                        compactCount(playlist.videoCount),
+                                    ),
+                                )
+                            }
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (first != null) {
+                    Button(
+                        onClick = {
+                            onVideoClick(
+                                first,
+                                state.playlistVideos.filterNot { it.url == first.url }.take(16),
+                            )
+                        },
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        shape = CircleShape,
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_play_arrow_rounded),
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            stringResource(R.string.playlist_play_all),
+                            style = MaterialTheme.typography.labelLarge,
+                        )
                     }
                 }
             }
         }
-        if (state.isLoadingPlaylist) item(key = "playlist_loading") { LoadingItem() }
+        if (state.isLoadingPlaylist) {
+            item(key = "playlist_loading_space") { Spacer(Modifier.height(8.dp)) }
+        }
         if (state.playlistError && state.playlistVideos.isEmpty()) {
             item(key = "playlist_error") { ErrorItem(stringResource(R.string.channel_playlist_error), onRetry) }
         }
@@ -936,10 +1027,33 @@ private fun OverviewCard(video: VideoSummary, startCorner: Dp, endCorner: Dp, on
         video.viewCount.takeIf { it >= 0 }?.let { compactCount(it) },
         video.uploadedAtEpochMillis?.let { formatRelativeDate(it) },
     ).joinToString(" • ")
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val animatedStartCorner by
+        animateDpAsState(
+            targetValue = if (pressed) 28.dp else startCorner,
+            animationSpec =
+                spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            label = "overview-start-corner",
+        )
+    val animatedEndCorner by
+        animateDpAsState(
+            targetValue = if (pressed) 28.dp else endCorner,
+            animationSpec =
+                spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            label = "overview-end-corner",
+        )
     Surface(
         onClick = onClick,
+        interactionSource = interactionSource,
         modifier = Modifier.width(160.dp),
-        shape = RoundedCornerShape(topStart = startCorner, bottomStart = startCorner, topEnd = endCorner, bottomEnd = endCorner),
+        shape = RoundedCornerShape(topStart = animatedStartCorner, bottomStart = animatedStartCorner, topEnd = animatedEndCorner, bottomEnd = animatedEndCorner),
         color = cardColor,
         tonalElevation = 1.dp,
     ) {
@@ -956,7 +1070,7 @@ private fun OverviewCard(video: VideoSummary, startCorner: Dp, endCorner: Dp, on
                 }
             }
             Spacer(Modifier.height(8.dp))
-            Text(video.title, modifier = Modifier.heroTitle(video.url, MaterialTheme.typography.titleSmall), style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(video.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (meta.isNotBlank()) {
                 Spacer(Modifier.height(4.dp))
                 Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -968,10 +1082,33 @@ private fun OverviewCard(video: VideoSummary, startCorner: Dp, endCorner: Dp, on
 @Composable
 private fun PlaylistRow(playlist: PlaylistSummary, topCorner: Dp, bottomCorner: Dp, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val placeholder = ColorPainter(clusterInnerColor())
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val animatedTopCorner by
+        animateDpAsState(
+            targetValue = if (pressed) 28.dp else topCorner,
+            animationSpec =
+                spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            label = "playlist-top-corner",
+        )
+    val animatedBottomCorner by
+        animateDpAsState(
+            targetValue = if (pressed) 28.dp else bottomCorner,
+            animationSpec =
+                spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            label = "playlist-bottom-corner",
+        )
     Surface(
         onClick = onClick,
+        interactionSource = interactionSource,
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(topStart = topCorner, topEnd = topCorner, bottomStart = bottomCorner, bottomEnd = bottomCorner),
+        shape = RoundedCornerShape(topStart = animatedTopCorner, topEnd = animatedTopCorner, bottomStart = animatedBottomCorner, bottomEnd = animatedBottomCorner),
         color = clusterCardColor(),
         tonalElevation = 1.dp,
     ) {
@@ -1059,83 +1196,3 @@ private fun GlassSnackbar(data: SnackbarData, haze: HazeState) {
     }
 }
 
-@Composable
-private fun ChannelMiniPlayer(
-    video: VideoSummary,
-    haze: HazeState,
-    onExpand: () -> Unit,
-    onClose: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val player = PlaybackHolder.player(LocalContext.current)
-    var playing by remember(player) { mutableStateOf(player.isPlaying) }
-    var title by remember(player, video.url) { mutableStateOf(player.mediaMetadata.title?.toString() ?: video.title) }
-    DisposableEffect(player) {
-        val listener = object : Player.Listener {
-            override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
-            override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) { title = mediaMetadata.title?.toString() ?: video.title }
-        }
-        player.addListener(listener)
-        onDispose { player.removeListener(listener) }
-    }
-    var drag by remember { mutableFloatStateOf(0f) }
-    var settling by remember { mutableStateOf(false) }
-    val offsetY by animateFloatAsState(
-        targetValue = if (settling) 0f else drag,
-        animationSpec = if (settling) spring(dampingRatio = Spring.DampingRatioNoBouncy) else snap(),
-        label = "mini-player-drag",
-    )
-    val dismissDistance = with(LocalDensity.current) { 96.dp.toPx() }
-    LaunchedEffect(settling, offsetY) {
-        if (settling && offsetY == 0f) {
-            drag = 0f
-            settling = false
-        }
-    }
-    Surface(
-        onClick = onExpand,
-        modifier = modifier.navigationBarsPadding().padding(8.dp).fillMaxWidth()
-            .offset { IntOffset(0, offsetY.roundToInt()) }
-            .clip(RoundedCornerShape(28.dp))
-            .hazeBlur(input = HazeInput.Sources(haze), style = HazeMaterials.ultraThin())
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.32f))
-            .pointerInput(Unit) {
-                detectVerticalDragGestures(
-                    onDragStart = { settling = false },
-                    onVerticalDrag = { change, amount ->
-                        change.consume()
-                        drag = (drag + amount).coerceAtLeast(0f)
-                    },
-                    onDragEnd = { if (drag > dismissDistance) onClose() else settling = true },
-                    onDragCancel = { settling = true },
-                )
-            },
-        shape = RoundedCornerShape(28.dp),
-        color = Color.Transparent,
-    ) {
-        Row(Modifier.heightIn(min = 56.dp).padding(start = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AndroidView(
-                factory = { ctx ->
-                    androidx.media3.ui.PlayerView(ctx).apply {
-                        useController = false
-                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                        setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
-                        this.player = player
-                    }
-                },
-                modifier = Modifier.width(96.dp).height(54.dp).clip(RoundedCornerShape(12.dp)),
-            )
-            Text(title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            IconButton(onClick = {
-                if (player.playWhenReady && player.playbackState != Player.STATE_ENDED) player.pause()
-                else {
-                    if (player.playbackState == Player.STATE_ENDED) player.seekTo(0L)
-                    player.play()
-                }
-            }) {
-                Icon(painterResource(if (playing) R.drawable.ic_pause_rounded else R.drawable.ic_play_arrow_rounded), stringResource(if (playing) R.string.player_pause else R.string.player_play), Modifier.size(24.dp))
-            }
-            IconButton(onClick = onClose) { Icon(painterResource(R.drawable.ic_close_rounded), stringResource(R.string.close), Modifier.size(24.dp)) }
-        }
-    }
-}

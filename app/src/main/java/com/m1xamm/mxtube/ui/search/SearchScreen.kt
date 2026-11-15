@@ -80,6 +80,7 @@ import com.m1xamm.mxtube.data.home.HomeTopics
 import com.m1xamm.mxtube.data.local.SearchHistoryEntry
 import com.m1xamm.mxtube.data.youtube.VideoSummary
 import com.m1xamm.mxtube.ui.common.BrandMark
+import com.m1xamm.mxtube.ui.common.LocalMiniPlayerVisible
 import com.m1xamm.mxtube.ui.common.clusterCardColor
 import com.m1xamm.mxtube.ui.common.clusterInnerColor
 import com.m1xamm.mxtube.ui.home.HomeFeed
@@ -686,7 +687,12 @@ private fun VideoList(
     LazyColumn(
         state = listState,
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 28.dp),
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            end = 16.dp,
+            top = 10.dp,
+            bottom = if (LocalMiniPlayerVisible.current) 100.dp else 28.dp,
+        ),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         itemsIndexed(
@@ -758,7 +764,12 @@ private fun SearchSkeleton(modifier: Modifier = Modifier) {
 
     LazyColumn(
         modifier = modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp),
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            end = 16.dp,
+            top = 10.dp,
+            bottom = if (LocalMiniPlayerVisible.current) 100.dp else 28.dp,
+        ),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         itemsIndexed(List(12) { it }) { index, _ ->

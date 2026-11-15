@@ -93,7 +93,6 @@
     <string name="player_subtitles_auto">Авто</string>
     <string name="player_subtitles_empty">Для цього відео субтитрів немає.</string>
     <string name="player_none">Немає</string>
-    <string name="player_more">Ще</string>
     <string name="player_related">Схожі відео</string>
     <string name="player_related_error">Не вдалося завантажити ще відео</string>
     <string name="player_related_empty">Схожих відео поки немає.</string>
@@ -167,4 +166,6 @@
         <item quantity="many">%1$d переглядів</item>
         <item quantity="other">%1$d перегляду</item>
     </plurals>
+    <string name="playlist_label">Плейлист</string>
+    <string name="playlist_play_all">Дивитися все</string>
 </resources>

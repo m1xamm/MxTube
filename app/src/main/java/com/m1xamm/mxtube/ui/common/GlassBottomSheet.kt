@@ -2,6 +2,7 @@ package com.m1xamm.mxtube.ui.common
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -133,6 +134,9 @@ internal fun GlassBottomSheet(
                         .widthIn(max = 520.dp)
                         .fillMaxWidth()
                         .heightIn(max = maximumHeight)
+                        .animateContentSize(
+                            animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+                        )
                         .offset { IntOffset(0, offset.roundToInt()) }
                         .clip(RoundedCornerShape(30.dp))
                         .hazeBlur(input = HazeInput.Sources(hazeState), style = HazeMaterials.ultraThin())
