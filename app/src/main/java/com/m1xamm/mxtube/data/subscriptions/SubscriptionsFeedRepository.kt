@@ -17,6 +17,7 @@ import org.schabi.newpipe.extractor.channel.tabs.ChannelTabs
 import java.io.IOException
 
 internal const val MAX_SUBSCRIPTIONS_FEED_VIDEOS = 300
+private const val PER_CHANNEL_FALLBACK = 8
 
 internal fun mergeSubscriptionsVideos(
     videos: Iterable<List<VideoSummary>>,
@@ -37,7 +38,7 @@ internal fun boundSubscriptionsVideos(
     videosByChannel: Map<String, List<VideoSummary>>,
 ): Map<String, List<VideoSummary>> {
     val channels = videosByChannel.entries.filter { it.key.isNotBlank() }.take(300)
-    val latest =
+    val ordered =
         channels.asSequence()
             .flatMap { (key, videos) -> videos.asSequence().map { key to it } }
             .filter { it.second.url.isNotBlank() }
@@ -47,8 +48,14 @@ internal fun boundSubscriptionsVideos(
                 }.thenBy { it.second.url }.thenBy { it.first },
             )
             .distinctBy { it.first to it.second.url }
-            .take(MAX_SUBSCRIPTIONS_FEED_VIDEOS)
+            .toList()
+    val latest =
+        ordered.take(MAX_SUBSCRIPTIONS_FEED_VIDEOS)
             .groupBy({ it.first }, { it.second })
+            .toMutableMap()
+    ordered.groupBy({ it.first }, { it.second }).forEach { (key, videos) ->
+        if (latest[key].isNullOrEmpty()) latest[key] = videos.take(PER_CHANNEL_FALLBACK)
+    }
     return channels.associate { it.key to latest[it.key].orEmpty() }
 }
 
@@ -148,6 +155,19 @@ class SubscriptionsFeedSession internal constructor(
             }
         fetch(targets, loadMore = true)
     }
+
+    suspend fun loadChannel(channelKey: String): SubscriptionsFeedSnapshot = operationMutex.withLock {
+        val channel = channels[channelKey] ?: return@withLock snapshot()
+        fetch(listOf(channel), loadMore = false)
+    }
+
+    private fun snapshot(): SubscriptionsFeedSnapshot =
+        SubscriptionsFeedSnapshot(
+            videosByChannel = videosByChannel,
+            failures = channels.mapNotNull { (key, channel) -> channel.failure?.let { key to it } }.toMap(),
+            successfulChannelKeys = emptySet(),
+            moreChannelKeys = channels.filterValues { it.session != null && it.hasMore }.keys.toSet(),
+        )
 
     private suspend fun fetch(targets: List<Channel>, loadMore: Boolean?): SubscriptionsFeedSnapshot {
         val accumulated = videosByChannel.toMutableMap()

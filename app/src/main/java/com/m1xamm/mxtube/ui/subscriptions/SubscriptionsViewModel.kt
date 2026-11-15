@@ -68,6 +68,15 @@ class SubscriptionsViewModel(
         if (_uiState.value.selectedChannelKey == key) return
         _uiState.update { it.copy(selectedChannelKey = key) }
         publish()
+        val live = session
+        if (key != null &&
+            live != null &&
+            snapshot.videosByChannel[key].isNullOrEmpty() &&
+            snapshot.failures[key] == null &&
+            !_uiState.value.isRefreshing
+        ) {
+            runOperation(isLoadMore = true) { live.loadChannel(key) }
+        }
     }
 
     fun loadMore() {

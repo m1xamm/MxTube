@@ -125,6 +125,9 @@ private fun SubscriptionsContent(
     }
     val hasFilterError = state.error || state.loadMoreError || state.failedChannels.isNotEmpty()
     val refreshState = rememberPullToRefreshState()
+    LaunchedEffect(state.selectedChannelKey) {
+        listState.requestScrollToItem(0)
+    }
     LaunchedEffect(
         nearEnd, state.selectedChannelKey, state.videos.size, state.videos.lastOrNull()?.url,
         state.hasMore, state.isLoading, state.isRefreshing, state.isLoadingMore, hasFilterError,
@@ -370,15 +373,14 @@ private fun SubscriptionsList(
                     HomeVideoCard(
                         video = video,
                         onClick = {
-                            val nearby = state.videos.subList(
-                                (index - 5).coerceAtLeast(0),
-                                (index + 16).coerceAtMost(state.videos.size),
-                            ).filterNot { it.url == video.url }
+                            val videos = state.videos
+                            val from = (index - 5).coerceIn(0, videos.size)
+                            val to = (index + 16).coerceIn(from, videos.size)
+                            val nearby = videos.subList(from, to).filterNot { it.url == video.url }
                             onVideoClick(video, nearby)
                         },
                         topCorner = if (index == 0) 28.dp else 4.dp,
                         bottomCorner = if (index == state.videos.lastIndex) 28.dp else 4.dp,
-                        modifier = Modifier.animateItem(),
                     )
                 }
                 if (state.isLoadingMore) {
