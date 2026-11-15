@@ -93,7 +93,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.ColorPainter
@@ -440,12 +446,35 @@ private fun ChannelActionToolbar(
         animationSpec = motion.defaultEffectsSpec(),
         label = "channel-toolbar-title",
     )
-    Column(
-        Modifier.padding(8.dp).fillMaxWidth().clip(RoundedCornerShape(corner))
-            .hazeBlur(input = HazeInput.Sources(haze), style = HazeMaterials.ultraThin())
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.48f))
-            .clickable(remember { MutableInteractionSource() }, indication = null, onClick = {}),
+    val background = MaterialTheme.colorScheme.background
+    Box(
+        modifier =
+            Modifier.fillMaxWidth().drawWithContent {
+                drawContent()
+                val inset = 8.dp.toPx()
+                val radius = corner.toPx()
+                val outer = Path().apply { addRect(Rect(0f, 0f, size.width, size.height)) }
+                val panel =
+                    Path().apply {
+                        addRoundRect(
+                            RoundRect(
+                                rect = Rect(inset, inset, size.width - inset, size.height - inset),
+                                cornerRadius = CornerRadius(radius, radius),
+                            ),
+                        )
+                    }
+                drawPath(
+                    Path.combine(PathOperation.Difference, outer, panel),
+                    background,
+                )
+            },
     ) {
+        Column(
+            Modifier.padding(8.dp).fillMaxWidth().clip(RoundedCornerShape(corner))
+                .hazeBlur(input = HazeInput.Sources(haze), style = HazeMaterials.ultraThin())
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.48f))
+                .clickable(remember { MutableInteractionSource() }, indication = null, onClick = {}),
+        ) {
         Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
                 Icon(painterResource(R.drawable.ic_arrow_back_rounded), stringResource(R.string.player_back), Modifier.size(24.dp))
@@ -504,6 +533,7 @@ private fun ChannelActionToolbar(
                 )
             }
         }
+    }
     }
 }
 
