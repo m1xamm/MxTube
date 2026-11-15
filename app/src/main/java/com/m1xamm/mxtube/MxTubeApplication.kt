@@ -15,6 +15,7 @@ import com.m1xamm.mxtube.data.local.UserPreferences
 import com.m1xamm.mxtube.data.network.Http
 import com.m1xamm.mxtube.data.youtube.OkHttpDownloader
 import com.m1xamm.mxtube.notifications.SubscriptionNotificationScheduler
+import com.m1xamm.mxtube.util.installCrashLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -40,6 +41,7 @@ class MxTubeApplication : Application(), SingletonImageLoader.Factory {
         AppLocale.init(this)
         HomeTopics.init(this)
         UserPreferences.init(this)
+        installCrashLogger(this)
 
         val locale = AppLocale.locale
         val countryCode =
