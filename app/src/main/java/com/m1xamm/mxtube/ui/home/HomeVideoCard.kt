@@ -15,6 +15,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -150,9 +153,14 @@ fun HomeVideoCard(
                 overflow = TextOverflow.Ellipsis,
             )
 
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(8.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
+                ChannelAvatar(
+                    avatarUrl = video.uploaderAvatarUrl,
+                    uploader = video.uploader,
+                )
+                Spacer(Modifier.width(10.dp))
                 Text(
                     text = video.uploader,
                     modifier = Modifier.weight(1f, fill = false),
@@ -179,6 +187,37 @@ fun HomeVideoCard(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ChannelAvatar(
+    avatarUrl: String?,
+    uploader: String,
+) {
+    val fallback = clusterInnerColor()
+    Box(
+        modifier =
+            Modifier
+                .size(26.dp)
+                .clip(CircleShape)
+                .background(fallback),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (avatarUrl != null) {
+            AsyncImage(
+                model = avatarUrl,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+        } else {
+            Text(
+                text = uploader.trim().take(1).uppercase(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

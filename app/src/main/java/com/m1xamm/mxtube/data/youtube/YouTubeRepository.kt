@@ -466,6 +466,8 @@ internal fun List<InfoItem>.videos(): List<VideoSummary> =
                 uploadedAtEpochMillis = item.uploadDate?.instant?.toEpochMilli(),
                 thumbnailUrl = item.thumbnails.bestUrl(),
                 uploaderUrl = item.uploaderUrl,
+                uploaderAvatarUrl = runCatching { item.uploaderAvatars.bestUrl() }.getOrNull()
+                    ?: ViewCountCorrector.avatar(item.url),
             )
         }
         .distinctBy { it.url }

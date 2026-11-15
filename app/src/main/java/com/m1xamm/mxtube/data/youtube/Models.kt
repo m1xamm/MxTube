@@ -9,6 +9,7 @@ data class VideoSummary(
     val uploadedAtEpochMillis: Long?,
     val thumbnailUrl: String?,
     val uploaderUrl: String? = null,
+    val uploaderAvatarUrl: String? = null,
 )
 
 data class SearchBatch(

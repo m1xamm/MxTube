@@ -46,6 +46,8 @@ class HomeFeedCache(context: Context) {
                                                     item.optString("thumbnail").takeIf { it.isNotBlank() },
                                                 uploaderUrl =
                                                     item.optString("uploaderUrl").takeIf { it.isNotBlank() },
+                                                uploaderAvatarUrl =
+                                                    item.optString("uploaderAvatar").takeIf { it.isNotBlank() },
                                             ),
                                         topics = item.optJSONArray("topics").toStringSet(),
                                     ),
@@ -90,6 +92,7 @@ class HomeFeedCache(context: Context) {
                                                 put("uploadedAt", video.uploadedAtEpochMillis ?: 0L)
                                                 put("thumbnail", video.thumbnailUrl.orEmpty())
                                                 put("uploaderUrl", video.uploaderUrl.orEmpty())
+                                                put("uploaderAvatar", video.uploaderAvatarUrl.orEmpty())
                                                 put("topics", JSONArray(feedItem.topics.toList()))
                                             },
                                         )
@@ -124,7 +127,7 @@ class HomeFeedCache(context: Context) {
 
     private companion object {
         const val MAX_CACHE_ITEMS = 24
-        const val CACHE_SCHEMA = 7
+        const val CACHE_SCHEMA = 11
     }
 }
 

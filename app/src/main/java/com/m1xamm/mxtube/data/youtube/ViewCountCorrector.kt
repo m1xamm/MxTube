@@ -19,8 +19,17 @@ internal object ViewCountCorrector {
     private val videoIdRegex = Regex("""(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})""")
     private val numberRegex = Regex("""(\d[\d \u00A0\u202F]*(?:[.,]\d+)?)""")
 
+    private val avatars = ConcurrentHashMap<String, String>()
+    private val avatarRegexes =
+        listOf(
+            Regex("\"decoratedAvatarViewModel\".{0,600}?\"url\":\"([^\"]+)\""),
+            Regex("\"channelThumbnailWithLinkRenderer\".{0,600}?\"url\":\"([^\"]+)\""),
+        )
+    private val renderedIdRegex = Regex("\"(?:videoId|contentId)\":\"([A-Za-z0-9_-]{11})\"")
+
     fun record(body: String) {
         if (body.length > MAX_BODY_LENGTH) return
+        recordAvatars(body)
         if (!body.contains("\"videoRenderer\"") &&
             !body.contains("\"compactVideoRenderer\"") &&
             !body.contains("\"gridVideoRenderer\"") &&
@@ -30,12 +39,14 @@ internal object ViewCountCorrector {
             return
         }
         if (counts.size > MAX_ENTRIES || subscribers.size > MAX_ENTRIES ||
-            handles.size > MAX_ENTRIES || channelVideos.size > MAX_ENTRIES
+            handles.size > MAX_ENTRIES || channelVideos.size > MAX_ENTRIES ||
+            avatars.size > MAX_ENTRIES
         ) {
             counts.clear()
             subscribers.clear()
             handles.clear()
             channelVideos.clear()
+            avatars.clear()
         }
         val jsonStart = body.indexOf('{')
         if (jsonStart < 0) return
@@ -61,6 +72,28 @@ internal object ViewCountCorrector {
         val id = videoIdRegex.find(url)?.groupValues?.getOrNull(1) ?: return fallback
         val corrected = counts[id] ?: return fallback
         return maxOf(fallback, corrected)
+    }
+
+    fun avatar(url: String): String? =
+        videoIdRegex.find(url)?.groupValues?.getOrNull(1)?.let { avatars[it] }
+
+    private fun recordAvatars(body: String) {
+        if (!body.contains("\"decoratedAvatarViewModel\"") &&
+            !body.contains("\"channelThumbnailWithLinkRenderer\"")
+        ) {
+            return
+        }
+        val ids = renderedIdRegex.findAll(body).toList()
+        if (ids.isEmpty()) return
+        for (regex in avatarRegexes) {
+            for (match in regex.findAll(body)) {
+                val url = match.groupValues[1]
+                if (!url.startsWith("http")) continue
+                val owner = ids.lastOrNull { it.range.first < match.range.first } ?: continue
+                if (avatars.size >= MAX_ENTRIES) return
+                avatars[owner.groupValues[1]] = url
+            }
+        }
     }
 
     fun correctSubscribers(channelId: String, fallback: Long): Long =
