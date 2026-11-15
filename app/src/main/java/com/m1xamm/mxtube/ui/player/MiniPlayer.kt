@@ -2,7 +2,10 @@
 
 package com.m1xamm.mxtube.ui.player
 
+import android.graphics.Bitmap
+import android.view.TextureView
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -36,12 +39,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
@@ -60,9 +67,9 @@ import androidx.media3.ui.PlayerView
 import com.m1xamm.mxtube.R
 import com.m1xamm.mxtube.data.youtube.VideoSummary
 import com.m1xamm.mxtube.playback.PlaybackHolder
-import com.m1xamm.mxtube.ui.common.HeroSource
+import com.m1xamm.mxtube.ui.common.BridgeFrame
 import com.m1xamm.mxtube.ui.common.PlayPauseIcon
-import com.m1xamm.mxtube.ui.common.heroImage
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import coil3.compose.AsyncImage
@@ -72,12 +79,24 @@ private const val WINDOW_WIDTH_DP = 176f
 private const val WINDOW_ASPECT = 9f / 16f
 private const val EDGE_DP = 8f
 
+private data class MiniBounds(
+    val minX: Float,
+    val maxX: Float,
+    val minY: Float,
+    val maxY: Float,
+)
+
 @Composable
 fun MiniPlayer(
     video: VideoSummary,
     bottomInset: Dp,
     onExpand: () -> Unit,
     onClose: () -> Unit,
+    initialPosition: Offset? = null,
+    onPositionChange: (Offset) -> Unit = {},
+    expandTarget: Rect? = null,
+    onExpandLanded: (Bitmap?) -> Unit = {},
+    bridgeFrame: Bitmap? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -91,6 +110,24 @@ fun MiniPlayer(
     var controlsVisible by remember { mutableStateOf(false) }
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
+    val videoView = remember { mutableStateOf<PlayerView?>(null) }
+    val expandProgress = remember { Animatable(0f) }
+    val expandSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
+    val landExpand = rememberUpdatedState(onExpandLanded)
+    LaunchedEffect(expandTarget) {
+        if (expandTarget != null) {
+            expandProgress.snapTo(0f)
+            expandProgress.animateTo(1f, expandSpec)
+            val texture = videoView.value?.videoSurfaceView as? TextureView
+            val bitmap =
+                texture?.takeIf { it.isAvailable }?.let { view ->
+                    runCatching { view.bitmap }.getOrNull()
+                }
+            landExpand.value(bitmap)
+        } else {
+            expandProgress.snapTo(0f)
+        }
+    }
     val navBarPx =
         with(density) {
             WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding().toPx()
@@ -144,20 +181,40 @@ fun MiniPlayer(
             (with(density) { maxHeight.toPx() } - navBarPx -
                 with(density) { bottomInset.toPx() } - heightPx)
                 .coerceAtLeast(minY)
-        var position by remember { mutableStateOf<Offset?>(null) }
+        var position by remember { mutableStateOf(initialPosition) }
+        var snapJob by remember { mutableStateOf<Job?>(null) }
         val snapSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
-        val current =
-            (position ?: Offset(maxX, maxY)).let {
-                Offset(it.x.coerceIn(minX, maxX), it.y.coerceIn(minY, maxY))
-            }
-        Surface(
+        val bounds =
+            rememberUpdatedState(
+                MiniBounds(
+                    minX = minX,
+                    maxX = maxX,
+                    minY = minY,
+                    maxY = maxY,
+                ),
+            )
+        Box(
             modifier =
                 Modifier
-                    .offset { IntOffset(current.x.roundToInt(), current.y.roundToInt()) }
-                    .pointerInput(Unit) {
+                    .offset {
+                        val b = bounds.value
+                        val p = position ?: Offset(b.maxX, b.maxY)
+                        IntOffset(
+                            p.x.coerceIn(b.minX, b.maxX).roundToInt(),
+                            p.y.coerceIn(b.minY, b.maxY).roundToInt(),
+                        )
+                    }                    .pointerInput(Unit) {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
-                            val start = current
+                            snapJob?.cancel()
+                            val b = bounds.value
+                            val start =
+                                (position ?: Offset(b.maxX, b.maxY)).let {
+                                    Offset(
+                                        it.x.coerceIn(b.minX, b.maxX),
+                                        it.y.coerceIn(b.minY, b.maxY),
+                                    )
+                                }
                             var travel = Offset.Zero
                             var dragging = false
                             while (true) {
@@ -173,34 +230,65 @@ fun MiniPlayer(
                                 if (dragging) {
                                     position =
                                         Offset(
-                                            (start.x + travel.x).coerceIn(minX, maxX),
-                                            (start.y + travel.y).coerceIn(minY, maxY),
+                                            (start.x + travel.x).coerceIn(b.minX, b.maxX),
+                                            (start.y + travel.y).coerceIn(b.minY, b.maxY),
                                         )
                                     change.consume()
                                 }
                             }
                             if (dragging) {
                                 val dropped = position ?: start
-                                val snapX = if (dropped.x < (minX + maxX) / 2f) minX else maxX
+                                val snapX = if (dropped.x < (b.minX + b.maxX) / 2f) b.minX else b.maxX
                                 position = dropped
-                                scope.launch {
-                                    animate(
-                                        initialValue = dropped.x,
-                                        targetValue = snapX,
-                                        animationSpec = snapSpec,
-                                    ) { value, _ ->
-                                        position = Offset(value, dropped.y)
+                                onPositionChange(dropped)
+                                snapJob =
+                                    scope.launch {
+                                        animate(
+                                            initialValue = dropped.x,
+                                            targetValue = snapX,
+                                            animationSpec = snapSpec,
+                                        ) { value, _ ->
+                                            position = Offset(value, dropped.y)
+                                        }
+                                        onPositionChange(Offset(snapX, dropped.y))
                                     }
-                                }
                             }
                         }
                     }
                     .size(width = WINDOW_WIDTH_DP.dp, height = (WINDOW_WIDTH_DP * WINDOW_ASPECT).dp)
-                    .heroImage(HeroSource.miniKey(video.url)),
-            shape = RoundedCornerShape(12.dp),
-            color = Color.Black,
-            shadowElevation = 8.dp,
+                    .graphicsLayer {
+                        val target = expandTarget
+                        if (target != null) {
+                            val p = expandProgress.value.coerceIn(0f, 1f)
+                            val current = position ?: Offset(bounds.value.maxX, bounds.value.maxY)
+                            val currentCenter =
+                                Offset(
+                                    current.x + size.width / 2f,
+                                    current.y + size.height / 2f,
+                                )
+                            val scale =
+                                1f + (target.width / size.width - 1f) * p
+                            translationX = (target.center.x - currentCenter.x) * p
+                            translationY = (target.center.y - currentCenter.y) * p
+                            scaleX = scale
+                            scaleY = scale
+                            transformOrigin = TransformOrigin(0.5f, 0.5f)
+                            clip = true
+                            shape = RoundedCornerShape((12f * (1f - p) / scale).dp)
+                        }
+                    },
         ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                shape =
+                    if (expandTarget != null) {
+                        androidx.compose.ui.graphics.RectangleShape
+                    } else {
+                        RoundedCornerShape(12.dp)
+                    },
+                color = Color.Black,
+                shadowElevation = if (expandTarget != null) 0.dp else 8.dp,
+            ) {
             Box(Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))) {
                 AsyncImage(
                     model = video.thumbnailUrl,
@@ -220,11 +308,14 @@ fun MiniPlayer(
                             isFocusableInTouchMode = false
                             setOnTouchListener { _, _ -> false }
                             this.player = player
+                            videoView.value = this
                         }
                     },
                     update = { view -> view.player = player },
+                    onRelease = { view -> view.player = null },
                     modifier = Modifier.fillMaxSize(),
                 )
+                BridgeFrame(bridgeFrame = bridgeFrame)
                 Box(
                     modifier =
                         Modifier
@@ -249,7 +340,7 @@ fun MiniPlayer(
                     }
                 }
                 AnimatedVisibility(
-                    visible = controlsVisible,
+                    visible = controlsVisible && expandTarget == null,
                     modifier = Modifier.zIndex(1f),
                     enter =
                         fadeIn(animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()) +
@@ -322,4 +413,5 @@ fun MiniPlayer(
             }
         }
     }
+}
 }

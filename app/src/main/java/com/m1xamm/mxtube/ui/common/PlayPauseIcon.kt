@@ -4,6 +4,7 @@ import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -11,32 +12,21 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.material3.MaterialTheme
-import kotlin.math.hypot
 
-private data class MorphPoint(
-    val from: Offset,
-    val to: Offset,
-    val radiusFrom: Float,
-    val radiusTo: Float,
-)
-
-private val LeftLobe =
+private val PlayShape =
     listOf(
-        MorphPoint(Offset(9f, 5f), Offset(6.5f, 5f), 1.5f, 1.5f),
-        MorphPoint(Offset(14.5f, 8.4f), Offset(10.5f, 5f), 0f, 1.5f),
-        MorphPoint(Offset(14.5f, 15.6f), Offset(10.5f, 19f), 0f, 1.5f),
-        MorphPoint(Offset(9f, 19f), Offset(6.5f, 19f), 1.5f, 1.5f),
+        Offset(9.4f, 4.6f),
+        Offset(20.2f, 12f),
+        Offset(9.4f, 19.4f),
     )
 
-private val RightLobe =
+private val PauseBars =
     listOf(
-        MorphPoint(Offset(14.5f, 8.4f), Offset(13.5f, 5f), 0f, 1.5f),
-        MorphPoint(Offset(20f, 12f), Offset(17.5f, 5f), 1.5f, 1.5f),
-        MorphPoint(Offset(14.5f, 15.6f), Offset(17.5f, 19f), 0f, 1.5f),
-        MorphPoint(Offset(14.5f, 15.6f), Offset(13.5f, 19f), 0f, 1.5f),
+        listOf(Offset(7f, 5f), Offset(11.2f, 5f), Offset(11.2f, 19f), Offset(7f, 19f)),
+        listOf(Offset(12.8f, 5f), Offset(17f, 5f), Offset(17f, 19f), Offset(12.8f, 19f)),
     )
 
 @Composable
@@ -49,7 +39,7 @@ fun PlayPauseIcon(
     val progress by
         animateFloatAsState(
             targetValue = if (playing) 1f else 0f,
-            animationSpec = tween(260, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)),
+            animationSpec = tween(220, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)),
             label = "play-pause-morph",
         )
     Canvas(
@@ -64,76 +54,58 @@ fun PlayPauseIcon(
     ) {
         val unit = size.minDimension / 24f
         val p = progress.coerceIn(0f, 1f)
-        drawLobe(LeftLobe, p, unit, tint)
-        drawLobe(RightLobe, p, unit, tint)
+        val center = Offset(size.width / 2f, size.height / 2f)
+        if (p < 1f) {
+            val scaleValue = 0.72f + 0.28f * (1f - p)
+            scale(scaleValue, scaleValue, center) {
+                drawShape(PlayShape, 2.2f, unit, tint.copy(alpha = 1f - p))
+            }
+        }
+        if (p > 0f) {
+            val scaleValue = 0.72f + 0.28f * p
+            scale(scaleValue, scaleValue, center) {
+                PauseBars.forEach { bar -> drawShape(bar, 1.9f, unit, tint.copy(alpha = p)) }
+            }
+        }
     }
 }
 
-private fun DrawScope.drawLobe(
-    points: List<MorphPoint>,
-    progress: Float,
+private fun DrawScope.drawShape(
+    points: List<Offset>,
+    radius: Float,
     unit: Float,
-    tint: Color,
+    color: Color,
 ) {
-    val positions =
-        points.map { point ->
-            val position = lerp(point.from, point.to, progress)
-            Offset(position.x * unit, position.y * unit)
-        }
-    val radii =
-        points.map { point ->
-            (point.radiusFrom + (point.radiusTo - point.radiusFrom) * progress) * unit
-        }
-    drawPath(roundedPolygonPath(positions, radii), tint)
+    val scaled = points.map { Offset(it.x * unit, it.y * unit) }
+    drawPath(roundedPolygonPath(scaled, radius * unit), color)
 }
 
-private fun roundedPolygonPath(points: List<Offset>, radii: List<Float>): Path {
+private fun roundedPolygonPath(points: List<Offset>, radius: Float): Path {
     val path = Path()
-    if (points.isEmpty()) return path
-    val entries = mutableListOf<Offset>()
-    val exits = mutableListOf<Offset>()
+    if (points.size < 3) return path
+    val entries = ArrayList<Offset>(points.size)
+    val exits = ArrayList<Offset>(points.size)
     for (i in points.indices) {
         val current = points[i]
         val previous = points[(i - 1 + points.size) % points.size]
         val next = points[(i + 1) % points.size]
-        val radius = radii[i].coerceAtLeast(0f)
         val toPrevious = previous - current
         val toNext = next - current
-        val previousLength = hypot(toPrevious.x, toPrevious.y)
-        val nextLength = hypot(toNext.x, toNext.y)
-        val entryRadius = radius.coerceAtMost(previousLength / 2f).coerceAtMost(nextLength / 2f)
-        val exitRadius = radius.coerceAtMost(previousLength / 2f).coerceAtMost(nextLength / 2f)
+        val previousLength = kotlin.math.hypot(toPrevious.x, toPrevious.y)
+        val nextLength = kotlin.math.hypot(toNext.x, toNext.y)
+        val corner = radius.coerceAtMost(previousLength / 2f).coerceAtMost(nextLength / 2f)
         entries +=
-            if (previousLength > 0.001f) {
-                current + toPrevious / previousLength * entryRadius
-            } else {
-                current
-            }
-        exits +=
-            if (nextLength > 0.001f) {
-                current + toNext / nextLength * exitRadius
-            } else {
-                current
-            }
+            if (previousLength > 0.001f) current + toPrevious / previousLength * corner else current
+        exits += if (nextLength > 0.001f) current + toNext / nextLength * corner else current
     }
     path.moveTo(entries[0].x, entries[0].y)
     for (i in points.indices) {
         val current = points[i]
         val nextEntry = entries[(i + 1) % points.size]
         val exit = exits[i]
-        if (exit != current) {
-            path.lineTo(exit.x, exit.y)
-        }
-        if (exit != nextEntry) {
-            path.quadraticTo(current.x, current.y, nextEntry.x, nextEntry.y)
-        }
+        path.lineTo(exit.x, exit.y)
+        path.quadraticTo(current.x, current.y, nextEntry.x, nextEntry.y)
     }
     path.close()
     return path
 }
-
-private fun lerp(from: Offset, to: Offset, progress: Float): Offset =
-    Offset(
-        from.x + (to.x - from.x) * progress,
-        from.y + (to.y - from.y) * progress,
-    )

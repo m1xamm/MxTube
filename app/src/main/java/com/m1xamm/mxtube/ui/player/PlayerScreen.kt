@@ -7,10 +7,13 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.view.LayoutInflater
+import android.view.TextureView
+import android.view.View
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -32,6 +35,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
@@ -50,6 +54,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -98,14 +103,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -166,6 +175,7 @@ import com.m1xamm.mxtube.ui.common.formatDuration
 import com.m1xamm.mxtube.ui.common.formatRelativeDate
 import com.m1xamm.mxtube.ui.common.formatTime
 import com.m1xamm.mxtube.ui.common.heroImage
+import com.m1xamm.mxtube.ui.common.BridgeFrame
 import com.m1xamm.mxtube.ui.common.HeroSource
 import com.m1xamm.mxtube.ui.common.PlayPauseIcon
 import com.m1xamm.mxtube.ui.common.viewsText
@@ -195,6 +205,12 @@ fun PlayerScreen(
     onWatchProgress: (Long) -> Unit = {},
     startFullscreen: Boolean = false,
     onFullscreenChanged: (Boolean) -> Unit = {},
+    morphFrom: Rect? = null,
+    morphTo: Rect? = null,
+    morphFromCorner: Float = 0f,
+    morphToCorner: Float = 0f,
+    bridgeFrame: Bitmap? = null,
+    onMorphLanded: (Bitmap?) -> Unit = {},
     modifier: Modifier = Modifier,
     subscriptions: SubscriptionsStore =
         (LocalContext.current.applicationContext as MxTubeApplication).subscriptionsStore,
@@ -270,18 +286,82 @@ fun PlayerScreen(
     var playbackError by remember { mutableStateOf(false) }
     var reloadToken by remember { mutableIntStateOf(0) }
     var coverVisible by remember { mutableStateOf(true) }
-    var detailsVisible by remember { mutableStateOf(false) }
+    var detailsVisible by remember { mutableStateOf(morphFrom == null) }
+    var morphRunning by remember { mutableStateOf(morphFrom != null || morphTo != null) }
+    val morphProgress = remember { Animatable(if (morphFrom != null) 0f else 1f) }
+    val morphSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
+    val capturedFrame = remember { mutableStateOf<Bitmap?>(null) }
     val detailsAlpha by
         animateFloatAsState(
             targetValue = if (detailsVisible) 1f else 0f,
             animationSpec = tween(280, delayMillis = 80, easing = FastOutSlowInEasing),
             label = "player-details-alpha",
         )
+    val effectiveDetailsAlpha = if (morphTo != null) 0f else detailsAlpha
+    val revealAlpha = if (morphRunning) effectiveDetailsAlpha else 1f
     LaunchedEffect(video.url) {
         coverVisible = true
-        detailsVisible = false
-        detailsVisible = true
     }
+    LaunchedEffect(morphFrom) {
+        if (morphFrom != null) {
+            morphRunning = true
+            morphProgress.snapTo(0f)
+            morphProgress.animateTo(1f, morphSpec)
+            morphRunning = false
+            detailsVisible = true
+        }
+    }
+    val closeMorphLanded = rememberUpdatedState(onMorphLanded)
+    val videoView = remember { mutableStateOf<View?>(null) }
+    LaunchedEffect(morphTo) {
+        if (morphTo != null) {
+            detailsVisible = false
+            morphRunning = true
+            morphProgress.snapTo(0f)
+            morphProgress.animateTo(1f, morphSpec)
+            val texture = videoView.value?.let { view ->
+                (view as? PlayerView)?.videoSurfaceView as? TextureView
+            }
+            val bitmap =
+                texture?.takeIf { it.isAvailable }?.let { view ->
+                    runCatching { view.bitmap }.getOrNull()
+                }
+            morphRunning = false
+            closeMorphLanded.value(bitmap)
+        }
+    }
+
+    val windowWidthPx = LocalWindowInfo.current.containerSize.width.toFloat()
+    val statusTopPx =
+        with(LocalDensity.current) {
+            WindowInsets.statusBars.asPaddingValues().calculateTopPadding().toPx()
+        }
+    val coverRect = Rect(0f, statusTopPx, windowWidthPx, statusTopPx + windowWidthPx * 9f / 16f)
+    val morphFromState = rememberUpdatedState(morphFrom)
+    val morphToState = rememberUpdatedState(morphTo)
+    val morphModifier =
+        if (!isFullscreen && (morphFrom != null || morphTo != null)) {
+            Modifier.graphicsLayer {
+                val p = morphProgress.value.coerceIn(0f, 1f)
+                val from = morphFromState.value ?: coverRect
+                val to = morphToState.value ?: coverRect
+                val width = from.width + (to.width - from.width) * p
+                val scale = (width / coverRect.width).coerceAtLeast(0.01f)
+                val centerX = from.center.x + (to.center.x - from.center.x) * p
+                val centerY = from.center.y + (to.center.y - from.center.y) * p
+                translationX = centerX - coverRect.center.x
+                translationY = centerY - coverRect.center.y
+                scaleX = scale
+                scaleY = scale
+                transformOrigin = TransformOrigin(0.5f, 0.5f)
+                val corner = morphFromCorner + (morphToCorner - morphFromCorner) * p
+                clip = true
+                shape = RoundedCornerShape((corner / scale).dp)
+            }
+        } else {
+            Modifier
+        }
+    val chromeVisible = controlsVisible && !morphRunning && morphTo == null
 
     val handleBack: () -> Unit = {
         if (subscriptionMenuOpen) {
@@ -328,6 +408,12 @@ fun PlayerScreen(
         isBuffering = exoPlayer.playbackState == Player.STATE_BUFFERING
         durationMs = exoPlayer.duration.coerceAtLeast(0)
         bufferedMs = exoPlayer.bufferedPosition
+    }
+
+    LaunchedEffect(video.url) {
+        if (PlaybackHolder.preparedKey != video.url) {
+            exoPlayer.pause()
+        }
     }
 
     DisposableEffect(exoPlayer) {
@@ -584,7 +670,7 @@ fun PlayerScreen(
                                         hazeState = hazeState,
                                     )
                                 },
-                                controlsVisible = controlsVisible && !settingsOpen,
+                                controlsVisible = chromeVisible && !settingsOpen,
                                 onToggleControls = { controlsVisible = !controlsVisible },
                                 onHideControls = { controlsVisible = false },
                                 isPlaying = isPlaying,
@@ -601,6 +687,8 @@ fun PlayerScreen(
                                 onSeek = onSeek,
                                 onDraggingChanged = onDraggingChanged,
                                 onPlayPause = onPlayPause,
+                                bridgeFrame = bridgeFrame,
+                                onVideoView = { videoView.value = it },
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
@@ -609,7 +697,9 @@ fun PlayerScreen(
                             modifier =
                                 Modifier
                                     .fillMaxSize()
-                                    .background(MaterialTheme.colorScheme.background),
+                                    .background(
+                                        MaterialTheme.colorScheme.background.copy(alpha = revealAlpha),
+                                    ),
                         ) {
                             Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
 
@@ -624,7 +714,7 @@ fun PlayerScreen(
                                 onBack = handleBack,
                                 onToggleFullscreen = toggleFullscreen,
                                 onOpenSettings = onOpenSettings,
-                                controlsVisible = controlsVisible && !settingsOpen,
+                                controlsVisible = chromeVisible && !settingsOpen,
                                 onToggleControls = { controlsVisible = !controlsVisible },
                                 onHideControls = { controlsVisible = false },
                                 isPlaying = isPlaying,
@@ -641,10 +731,13 @@ fun PlayerScreen(
                                 onSeek = onSeek,
                                 onDraggingChanged = onDraggingChanged,
                                 onPlayPause = onPlayPause,
+                                bridgeFrame = bridgeFrame,
+                                onVideoView = { videoView.value = it },
                                 modifier =
                                     Modifier
                                         .fillMaxWidth()
-                                        .aspectRatio(16f / 9f),
+                                        .aspectRatio(16f / 9f)
+                                        .then(morphModifier),
                             )
 
                             PlayerDetails(
@@ -668,7 +761,7 @@ fun PlayerScreen(
                                 modifier =
                                     Modifier
                                         .weight(1f)
-                                        .graphicsLayer { alpha = detailsAlpha },
+                                        .graphicsLayer { alpha = effectiveDetailsAlpha },
                             )
                         }
                     }
@@ -742,13 +835,14 @@ private fun PlayerStage(
     onSeek: (Long) -> Unit,
     onDraggingChanged: (Boolean) -> Unit,
     onPlayPause: () -> Unit,
+    bridgeFrame: Bitmap? = null,
+    onVideoView: (View) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var feedbackVisible by remember { mutableStateOf(false) }
     var feedbackBackward by remember { mutableStateOf(false) }
     var feedbackToken by remember { mutableIntStateOf(0) }
     var scrubPositionMs by remember { mutableLongStateOf(positionMs) }
-    val playShape = MaterialShapes.Cookie9Sided.toShape()
     val feedbackShape = MaterialShapes.Cookie9Sided.toShape()
     val playInteractionSource = remember { MutableInteractionSource() }
     val playPressed by playInteractionSource.collectIsPressedAsState()
@@ -796,7 +890,6 @@ private fun PlayerStage(
             modifier
                 .background(Color.Black)
                 .clipToBounds()
-                .heroImage(HeroSource.playerKey(videoUrl))
                 .then(
                     if (onRelatedVisibilityChanged != null) {
                         Modifier.pointerInput(Unit) {
@@ -853,12 +946,14 @@ private fun PlayerStage(
                         setBottomPaddingFraction(0.22f)
                     }
                     player = exoPlayer
+                    onVideoView(this)
                 }
             },
             update = { view ->
                 view.player = exoPlayer
                 view.getSubtitleView()?.translationY = -subtitleShift
             },
+            onRelease = { view -> view.player = null },
             modifier =
                 Modifier
                     .fillMaxSize()
@@ -870,6 +965,8 @@ private fun PlayerStage(
                     }
                     .hazeSource(hazeState),
         )
+
+        BridgeFrame(bridgeFrame = bridgeFrame)
 
         AnimatedVisibility(
             visible = coverVisible,
@@ -946,13 +1043,13 @@ private fun PlayerStage(
                 modifier =
                     Modifier
                         .align(Alignment.Center)
-                        .size(60.dp)
-                        .clip(playShape)
+                        .size(56.dp)
+                        .clip(CircleShape)
                         .background(Color.Black.copy(alpha = 0.32f)),
                 contentAlignment = Alignment.Center,
             ) {
                 LoadingIndicator(
-                    modifier = Modifier.size(28.dp),
+                    modifier = Modifier.size(26.dp),
                     color = Color.White,
                 )
             }
@@ -1040,8 +1137,8 @@ private fun PlayerStage(
                     modifier =
                         Modifier
                             .align(Alignment.Center)
-                            .size(60.dp)
-                            .clip(playShape)
+                            .size(56.dp)
+                            .clip(CircleShape)
                             .hazeBlur(
                                 input = HazeInput.Sources(hazeState),
                                 style = HazeMaterials.ultraThin(),
@@ -1051,7 +1148,7 @@ private fun PlayerStage(
                                 scaleX = playScale
                                 scaleY = playScale
                             },
-                    shape = playShape,
+                    shape = CircleShape,
                     color = Color.Transparent,
                     contentColor = Color.White,
                 ) {
@@ -1612,7 +1709,7 @@ private fun PlayerDetails(
 
             item(key = "related_cluster") {
                 VideoCluster(
-                    videos = related,
+                    videos = related.take(MAX_PORTRAIT_RELATED),
                     onVideoClick = onRelatedClick,
                 )
             }
@@ -1620,6 +1717,8 @@ private fun PlayerDetails(
     }
 
 }
+
+private const val MAX_PORTRAIT_RELATED = 30
 
 @Composable
 internal fun ChannelSubscribeCard(

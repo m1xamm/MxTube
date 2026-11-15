@@ -251,10 +251,6 @@ class HomeViewModel(
     fun onWatchRecorded() {
         personalizedStale = true
         cache.remove(HomeTopics.all.id)
-        if (_uiState.value.selectedTopic.kind == HomeTopicKind.Personalized) {
-            personalizedStale = false
-            loadTopic(HomeTopics.all, latestHistory, force = true)
-        }
     }
 
     fun onHistoryCleared() {

@@ -201,8 +201,7 @@ private fun PlayerInfoScreen(
                 Modifier
                     .fillMaxWidth()
                     .aspectRatio(16f / 9f)
-                    .background(Color.Black)
-                    .heroImage(HeroSource.playerKey(video.url)),
+                    .background(Color.Black),
             contentAlignment = Alignment.Center,
         ) {
             AsyncImage(

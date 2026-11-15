@@ -35,6 +35,7 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -42,8 +43,6 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.m1xamm.mxtube.data.home.HomeTopics
-import com.m1xamm.mxtube.ui.common.HeroFrame
-import com.m1xamm.mxtube.ui.common.HeroOverlay
 import com.m1xamm.mxtube.ui.common.HeroSource
 import com.m1xamm.mxtube.ui.common.LocalMiniPlayerVisible
 import com.m1xamm.mxtube.data.youtube.VideoSummary
@@ -95,7 +94,13 @@ fun MxTubeApp(
     val homeListState = rememberLazyListState()
     val searchListState = rememberLazyListState()
     val subscriptionsListState = rememberLazyListState()
-    var hero by remember { mutableStateOf<HeroFrame?>(null) }
+    var playerMorphFrom by remember { mutableStateOf<Rect?>(null) }
+    var playerMorphTo by remember { mutableStateOf<Rect?>(null) }
+    var playerBridge by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var miniBridge by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var miniExpandTarget by remember { mutableStateOf<Rect?>(null) }
+    var miniPosition by remember { mutableStateOf<Offset?>(null) }
+    var pendingExpand by remember { mutableStateOf<VideoSummary?>(null) }
     val density = LocalDensity.current
     val container = LocalWindowInfo.current.containerSize
     val statusTopPx =
@@ -119,80 +124,111 @@ fun MxTubeApp(
             bottom,
         )
     }
+    fun miniRect(bottomInset: androidx.compose.ui.unit.Dp): Rect {
+        val default = miniThumbRect(bottomInset)
+        val position = miniPosition ?: return default
+        return Rect(
+            position.x,
+            position.y,
+            position.x + default.width,
+            position.y + default.height,
+        )
+    }
     val showNav = selectedVideo == null && selectedChannelUrl == null && !isSearchActive
     val miniVisible = miniVideo != null && selectedVideo == null && !channelSheetOpen
     val openChannel: (String) -> Unit = { url ->
         shownChannelUrl = url
         selectedChannelUrl = url
     }
-    val openChannelFromPlayer: (String) -> Unit = { url ->
-        shownVideo?.let { playing ->
-            miniVideo = playing
-            miniRelated = playerRelated
-        }
-        playerFullscreen = false
-        playerReturnChannel = null
-        selectedVideo = null
-        openChannel(url)
-    }
-    val openPlayer: (VideoSummary, List<VideoSummary>, String?) -> Unit = { video, related, returnChannel ->
-        miniVideo = null
-        playerRelated = related.filter { it.url != video.url }.take(8)
-        playerReturnChannel = returnChannel
-        playerFullscreen = false
-        shownVideo = video
-        hero = HeroSource.get(video.url)?.let { HeroFrame(video, it, playerCover) }
-        selectedVideo = video
-    }
-    val expandMini: () -> Unit = {
-        val video = miniVideo
-        if (video != null) {
-            val from = HeroSource.get(HeroSource.miniKey(video.url)) ?: miniThumbRect(bareBottomInset)
-            hero =
-                HeroFrame(
-                    video = video,
-                    from = from,
-                    to = playerCover,
-                    fromCornerDp = 12f,
-                    toCornerDp = 0f,
-                )
-            playerRelated = miniRelated
-            playerReturnChannel = selectedChannelUrl
-            playerFullscreen = false
-            shownVideo = video
-            miniVideo = null
-            selectedVideo = video
-        }
-    }
     val closeMini: () -> Unit = {
         PlaybackHolder.stop()
         PlaybackService.stop(context)
         miniVideo = null
         miniRelated = emptyList()
+        miniBridge = null
     }
+    val finishPlayerMorph: (android.graphics.Bitmap?) -> Unit = { bitmap ->
+        val playing = shownVideo
+        val target = playerMorphTo
+        if (playing != null) {
+            miniBridge = bitmap
+            miniVideo = playing
+            miniRelated = playerRelated
+            if (target != null) miniPosition = target.topLeft
+        }
+        playerMorphFrom = null
+        playerBridge = null
+        selectedVideo = null
+    }
+
     val closePlayer: () -> Unit = {
         val playing = shownVideo
         if (playing != null) {
             val returnChannel = playerReturnChannel
             val bottomInset = if (returnChannel != null || isSearchActive) bareBottomInset else navBottomInset
-            hero =
-                HeroSource.get(HeroSource.playerKey(playing.url))?.let { from ->
-                    HeroFrame(
-                        video = playing,
-                        from = from,
-                        to = miniThumbRect(bottomInset),
-                        fromCornerDp = 0f,
-                        toCornerDp = 12f,
-                    )
-                }
-            miniRelated = playerRelated
-            miniVideo = playing
+            playerMorphFrom = null
+            playerMorphTo = miniRect(bottomInset)
+            playerReturnChannel?.let(openChannel)
         }
         playerFullscreen = false
-        selectedVideo = null
-        playerReturnChannel?.let(openChannel)
         playerReturnChannel = null
         homeViewModel.onHomeVisible()
+        if (playing == null) {
+            selectedVideo = null
+        }
+    }
+    val openChannelFromPlayer: (String) -> Unit = { url ->
+        playerReturnChannel = url
+        closePlayer()
+    }
+    val openPlayer: (VideoSummary, List<VideoSummary>, String?) -> Unit = { video, related, returnChannel ->
+        miniVideo = null
+        miniBridge = null
+        miniExpandTarget = null
+        pendingExpand = null
+        playerRelated = related.filter { it.url != video.url }.take(8)
+        playerReturnChannel = returnChannel
+        playerFullscreen = false
+        playerBridge = null
+        playerMorphTo = null
+        playerMorphFrom = HeroSource.get(video.url)
+        shownVideo = video
+        selectedVideo = video
+    }
+    val startMiniExpand: () -> Unit = {
+        val video = miniVideo
+        if (video != null && miniExpandTarget == null) {
+            pendingExpand = video
+            miniExpandTarget = playerCover
+        }
+    }
+    val finishMiniExpand: (android.graphics.Bitmap?) -> Unit = { bitmap ->
+        val video = pendingExpand
+        if (video != null) {
+            playerBridge = bitmap
+            playerMorphFrom = null
+            playerMorphTo = null
+            playerRelated = miniRelated
+            playerReturnChannel = selectedChannelUrl
+            playerFullscreen = false
+            shownVideo = video
+            selectedVideo = video
+            miniVideo = null
+        }
+        miniExpandTarget = null
+        pendingExpand = null
+    }
+    LaunchedEffect(miniBridge) {
+        if (miniBridge != null) {
+            kotlinx.coroutines.delay(180)
+            miniBridge = null
+        }
+    }
+    LaunchedEffect(playerBridge) {
+        if (playerBridge != null) {
+            kotlinx.coroutines.delay(180)
+            playerBridge = null
+        }
     }
 
     LaunchedEffect(notificationVideo) {
@@ -205,6 +241,10 @@ fun MxTubeApp(
             playerReturnChannel = null
             playerRelated = emptyList()
             playerFullscreen = false
+            playerMorphFrom = null
+            playerMorphTo = null
+            playerBridge = null
+            miniBridge = null
             miniVideo = null
             shownVideo = video
             selectedVideo = video
@@ -323,8 +363,8 @@ fun MxTubeApp(
         AnimatedVisibility(
             visible = selectedVideo != null,
             modifier = Modifier.fillMaxSize(),
-            enter = fadeIn(tween(140)),
-            exit = fadeOut(tween(160)),
+            enter = if (playerMorphFrom != null) androidx.compose.animation.EnterTransition.None else fadeIn(tween(140)),
+            exit = if (playerMorphTo != null) androidx.compose.animation.ExitTransition.None else fadeOut(tween(160)),
         ) {
             shownVideo?.let { video ->
                 key(video.url) {
@@ -341,6 +381,9 @@ fun MxTubeApp(
                                 homeViewModel.onWatchRecorded()
                             }
                             playerRelated = emptyList()
+                            playerMorphFrom = null
+                            playerMorphTo = null
+                            playerBridge = null
                             shownVideo = next
                             selectedVideo = next
                         },
@@ -352,6 +395,12 @@ fun MxTubeApp(
                         },
                         startFullscreen = playerFullscreen,
                         onFullscreenChanged = { playerFullscreen = it },
+                        morphFrom = playerMorphFrom,
+                        morphTo = playerMorphTo,
+                        morphFromCorner = 20f,
+                        morphToCorner = 12f,
+                        bridgeFrame = playerBridge,
+                        onMorphLanded = finishPlayerMorph,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -363,14 +412,15 @@ fun MxTubeApp(
                 MiniPlayer(
                     video = video,
                     bottomInset = if (showNav) navBottomInset else bareBottomInset,
-                    onExpand = expandMini,
+                    onExpand = startMiniExpand,
                     onClose = closeMini,
+                    initialPosition = miniPosition,
+                    onPositionChange = { miniPosition = it },
+                    expandTarget = miniExpandTarget,
+                    onExpandLanded = finishMiniExpand,
+                    bridgeFrame = miniBridge,
                 )
             }
-        }
-
-        hero?.let { frame ->
-            HeroOverlay(frame = frame, onDone = { hero = null })
         }
         }
     }

@@ -3,16 +3,17 @@ package com.m1xamm.mxtube.ui.common
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -120,14 +121,19 @@ internal fun GlassBottomSheet(
                 modifier =
                     Modifier.align(Alignment.BottomCenter)
                         .animateEnterExit(
-                            enter = slideInVertically(
-                                initialOffsetY = { it },
-                                animationSpec = spring(
-                                    dampingRatio = Spring.DampingRatioNoBouncy,
-                                    stiffness = Spring.StiffnessMediumLow,
-                                ),
-                            ),
-                            exit = slideOutVertically(targetOffsetY = { it }, animationSpec = tween(180)),
+                            enter =
+                                expandVertically(
+                                    expandFrom = Alignment.Bottom,
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMediumLow,
+                                    ),
+                                ) + fadeIn(tween(140)),
+                            exit =
+                                shrinkVertically(
+                                    shrinkTowards = Alignment.Bottom,
+                                    animationSpec = tween(180, easing = FastOutSlowInEasing),
+                                ) + fadeOut(tween(160)),
                         )
                         .navigationBarsPadding()
                         .padding(8.dp)
