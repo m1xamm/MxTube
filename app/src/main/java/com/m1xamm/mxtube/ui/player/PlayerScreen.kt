@@ -21,9 +21,14 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -33,6 +38,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
@@ -94,6 +100,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -105,6 +112,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
@@ -186,8 +194,10 @@ import dev.chrisbanes.haze.blur.hazeBlur
 import dev.chrisbanes.haze.blur.materials.HazeMaterials
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 private enum class PlayButtonState {
     Buffering,
@@ -205,6 +215,11 @@ fun PlayerScreen(
     onWatchProgress: (Long) -> Unit = {},
     startFullscreen: Boolean = false,
     onFullscreenChanged: (Boolean) -> Unit = {},
+    playlistQueue: PlaylistQueue? = null,
+    onQueueSelect: (Int) -> Unit = {},
+    onQueueShuffle: (Boolean) -> Unit = {},
+    onQueueLoop: (Boolean) -> Unit = {},
+    onEnded: () -> Unit = {},
     morphFrom: Rect? = null,
     morphTo: Rect? = null,
     morphFromCorner: Float = 0f,
@@ -282,23 +297,34 @@ fun PlayerScreen(
     var bufferedMs by remember { mutableLongStateOf(0L) }
     var isDragging by remember { mutableStateOf(false) }
     var speed by rememberSaveable { mutableFloatStateOf(UserPreferences.playbackSpeed) }
+    val boostPlayback: (Boolean) -> Unit = { active ->
+        exoPlayer.setPlaybackSpeed(if (active) 2f else speed)
+    }
     var settingsOpen by remember { mutableStateOf(false) }
     var playbackError by remember { mutableStateOf(false) }
     var reloadToken by remember { mutableIntStateOf(0) }
     var coverVisible by remember { mutableStateOf(true) }
-    var detailsVisible by remember { mutableStateOf(morphFrom == null) }
+    var playlistExpanded by remember { mutableStateOf(false) }
+    var detailsVisible by remember { mutableStateOf(morphFrom == null && morphTo == null) }
     var morphRunning by remember { mutableStateOf(morphFrom != null || morphTo != null) }
     val morphProgress = remember { Animatable(if (morphFrom != null) 0f else 1f) }
-    val morphSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
-    val capturedFrame = remember { mutableStateOf<Bitmap?>(null) }
+    val morphSpec =
+        spring<Float>(dampingRatio = 0.86f, stiffness = Spring.StiffnessLow)
     val detailsAlpha by
         animateFloatAsState(
             targetValue = if (detailsVisible) 1f else 0f,
-            animationSpec = tween(280, delayMillis = 80, easing = FastOutSlowInEasing),
+            animationSpec = tween(260, easing = FastOutSlowInEasing),
             label = "player-details-alpha",
         )
-    val effectiveDetailsAlpha = if (morphTo != null) 0f else detailsAlpha
-    val revealAlpha = if (morphRunning) effectiveDetailsAlpha else 1f
+    var revealTarget by remember { mutableFloatStateOf(if (morphFrom != null) 0f else 1f) }
+    val backgroundColor = MaterialTheme.colorScheme.background
+    val revealAlpha by
+        animateFloatAsState(
+            targetValue = revealTarget,
+            animationSpec =
+                spring(dampingRatio = 1f, stiffness = Spring.StiffnessMediumLow),
+            label = "player-reveal-alpha",
+        )
     LaunchedEffect(video.url) {
         coverVisible = true
     }
@@ -306,18 +332,25 @@ fun PlayerScreen(
         if (morphFrom != null) {
             morphRunning = true
             morphProgress.snapTo(0f)
+            revealTarget = 1f
+            launch {
+                delay(70)
+                detailsVisible = true
+            }
             morphProgress.animateTo(1f, morphSpec)
             morphRunning = false
             detailsVisible = true
         }
     }
     val closeMorphLanded = rememberUpdatedState(onMorphLanded)
+    val endedHandler = rememberUpdatedState(onEnded)
     val videoView = remember { mutableStateOf<View?>(null) }
     LaunchedEffect(morphTo) {
         if (morphTo != null) {
             detailsVisible = false
             morphRunning = true
             morphProgress.snapTo(0f)
+            revealTarget = 0f
             morphProgress.animateTo(1f, morphSpec)
             val texture = videoView.value?.let { view ->
                 (view as? PlayerView)?.videoSurfaceView as? TextureView
@@ -417,8 +450,7 @@ fun PlayerScreen(
     }
 
     DisposableEffect(exoPlayer) {
-        val listener =
-            object : Player.Listener {
+        val listener =            object : Player.Listener {
                 override fun onIsPlayingChanged(playing: Boolean) {
                     isPlaying = playing
                     if (playing) ended = false
@@ -434,6 +466,7 @@ fun PlayerScreen(
                     if (playbackState == Player.STATE_ENDED) {
                         controlsVisible = true
                         ended = true
+                        endedHandler.value()
                     }
                 }
 
@@ -689,6 +722,7 @@ fun PlayerScreen(
                                 onPlayPause = onPlayPause,
                                 bridgeFrame = bridgeFrame,
                                 onVideoView = { videoView.value = it },
+                                onBoostChanged = boostPlayback,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
@@ -697,9 +731,12 @@ fun PlayerScreen(
                             modifier =
                                 Modifier
                                     .fillMaxSize()
-                                    .background(
-                                        MaterialTheme.colorScheme.background.copy(alpha = revealAlpha),
-                                    ),
+                                    .drawBehind {
+                                        drawRect(
+                                            color = backgroundColor,
+                                            alpha = revealAlpha.coerceIn(0f, 1f),
+                                        )
+                                    },
                         ) {
                             Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
 
@@ -733,12 +770,26 @@ fun PlayerScreen(
                                 onPlayPause = onPlayPause,
                                 bridgeFrame = bridgeFrame,
                                 onVideoView = { videoView.value = it },
+                                onBoostChanged = boostPlayback,
                                 modifier =
                                     Modifier
                                         .fillMaxWidth()
                                         .aspectRatio(16f / 9f)
                                         .then(morphModifier),
                             )
+
+                            if (playlistQueue != null) {
+                                PlaylistBar(
+                                    queue = playlistQueue,
+                                    expanded = playlistExpanded,
+                                    onToggleExpanded = { playlistExpanded = !playlistExpanded },
+                                    onSelect = onQueueSelect,
+                                    onShuffle = { onQueueShuffle(!playlistQueue.shuffled) },
+                                    onLoop = { onQueueLoop(!playlistQueue.loop) },
+                                    modifier =
+                                        Modifier.graphicsLayer { alpha = detailsAlpha },
+                                )
+                            }
 
                             PlayerDetails(
                                 video = video,
@@ -761,7 +812,7 @@ fun PlayerScreen(
                                 modifier =
                                     Modifier
                                         .weight(1f)
-                                        .graphicsLayer { alpha = effectiveDetailsAlpha },
+                                        .graphicsLayer { alpha = detailsAlpha },
                             )
                         }
                     }
@@ -837,13 +888,26 @@ private fun PlayerStage(
     onPlayPause: () -> Unit,
     bridgeFrame: Bitmap? = null,
     onVideoView: (View) -> Unit = {},
+    onBoostChanged: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var feedbackVisible by remember { mutableStateOf(false) }
     var feedbackBackward by remember { mutableStateOf(false) }
     var feedbackToken by remember { mutableIntStateOf(0) }
     var scrubPositionMs by remember { mutableLongStateOf(positionMs) }
+    val playShape = MaterialShapes.Cookie9Sided.toShape()
     val feedbackShape = MaterialShapes.Cookie9Sided.toShape()
+    var boost by remember { mutableStateOf(false) }
+    val boostHandler = rememberUpdatedState(onBoostChanged)
+    val playingState = rememberUpdatedState(isPlaying)
+    val gestureScope = rememberCoroutineScope()
+    var boostJob by remember { mutableStateOf<Job?>(null) }
+    DisposableEffect(Unit) {
+        onDispose {
+            boostJob?.cancel()
+            boostHandler.value(false)
+        }
+    }
     val playInteractionSource = remember { MutableInteractionSource() }
     val playPressed by playInteractionSource.collectIsPressedAsState()
     val playScale by
@@ -890,6 +954,76 @@ private fun PlayerStage(
             modifier
                 .background(Color.Black)
                 .clipToBounds()
+                .pointerInput(Unit) {
+                    val longPressTimeout = viewConfiguration.longPressTimeoutMillis
+                    detectTapGestures(
+                        onPress = {
+                            boostJob?.cancel()
+                            boostJob =
+                                gestureScope.launch {
+                                    delay(longPressTimeout + 16)
+                                    if (playingState.value) {
+                                        boost = true
+                                        boostHandler.value(true)
+                                    }
+                                }
+                            tryAwaitRelease()
+                            boostJob?.cancel()
+                            if (boost) {
+                                boost = false
+                                boostHandler.value(false)
+                            }
+                        },
+                        onLongPress = {},
+                        onTap = { onToggleControls() },
+                        onDoubleTap = { offset ->
+                            onHideControls()
+                            seekBy(
+                                if (offset.x < size.width / 2f) -10_000L else 10_000L,
+                                true,
+                            )
+                        },
+                    )
+                }
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        var scale = zoomScale
+                        var offset = zoomOffset
+                        do {
+                            val event = awaitPointerEvent()
+                            val pointers = event.changes.count { it.pressed }
+                            val zoomChange = event.calculateZoom()
+                            val panChange = event.calculatePan()
+                            if (pointers >= 2) {
+                                scale = (scale * zoomChange).coerceIn(1f, 4f)
+                                val maxX = (scale - 1f) * size.width / 2f
+                                val maxY = (scale - 1f) * size.height / 2f
+                                offset =
+                                    Offset(
+                                        (offset.x + panChange.x).coerceIn(-maxX, maxX),
+                                        (offset.y + panChange.y).coerceIn(-maxY, maxY),
+                                    )
+                                event.changes.forEach { it.consume() }
+                            } else if (scale > 1f) {
+                                val maxX = (scale - 1f) * size.width / 2f
+                                val maxY = (scale - 1f) * size.height / 2f
+                                offset =
+                                    Offset(
+                                        (offset.x + panChange.x).coerceIn(-maxX, maxX),
+                                        (offset.y + panChange.y).coerceIn(-maxY, maxY),
+                                    )
+                                event.changes.forEach { it.consume() }
+                            }
+                            zoomScale = scale
+                            zoomOffset = offset
+                        } while (event.changes.any { it.pressed })
+                        if (scale <= 1.01f) {
+                            zoomScale = 1f
+                            zoomOffset = Offset.Zero
+                        }
+                    }
+                }
                 .then(
                     if (onRelatedVisibilityChanged != null) {
                         Modifier.pointerInput(Unit) {
@@ -981,70 +1115,13 @@ private fun PlayerStage(
             )
         }
 
-        Box(
-            modifier =
-                Modifier
-                    .matchParentSize()
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onTap = { onToggleControls() },
-                            onDoubleTap = { offset ->
-                                onHideControls()
-                                seekBy(
-                                    if (offset.x < size.width / 2f) -10_000L else 10_000L,
-                                    true,
-                                )
-                            },
-                        )
-                    }
-                    .pointerInput(Unit) {
-                        awaitEachGesture {
-                            awaitFirstDown(requireUnconsumed = false)
-                            var scale = zoomScale
-                            var offset = zoomOffset
-                            do {
-                                val event = awaitPointerEvent()
-                                val pointers = event.changes.count { it.pressed }
-                                val zoomChange = event.calculateZoom()
-                                val panChange = event.calculatePan()
-                                if (pointers >= 2) {
-                                    scale = (scale * zoomChange).coerceIn(1f, 4f)
-                                    val maxX = (scale - 1f) * size.width / 2f
-                                    val maxY = (scale - 1f) * size.height / 2f
-                                    offset =
-                                        Offset(
-                                            (offset.x + panChange.x).coerceIn(-maxX, maxX),
-                                            (offset.y + panChange.y).coerceIn(-maxY, maxY),
-                                        )
-                                    event.changes.forEach { it.consume() }
-                                } else if (scale > 1f) {
-                                    val maxX = (scale - 1f) * size.width / 2f
-                                    val maxY = (scale - 1f) * size.height / 2f
-                                    offset =
-                                        Offset(
-                                            (offset.x + panChange.x).coerceIn(-maxX, maxX),
-                                            (offset.y + panChange.y).coerceIn(-maxY, maxY),
-                                        )
-                                    event.changes.forEach { it.consume() }
-                                }
-                                zoomScale = scale
-                                zoomOffset = offset
-                            } while (event.changes.any { it.pressed })
-                            if (scale <= 1.01f) {
-                                zoomScale = 1f
-                                zoomOffset = Offset.Zero
-                            }
-                        }
-                    },
-        )
-
         if (isBuffering && !controlsVisible) {
             Box(
                 modifier =
                     Modifier
                         .align(Alignment.Center)
                         .size(56.dp)
-                        .clip(CircleShape)
+                        .clip(playShape)
                         .background(Color.Black.copy(alpha = 0.32f)),
                 contentAlignment = Alignment.Center,
             ) {
@@ -1138,7 +1215,7 @@ private fun PlayerStage(
                         Modifier
                             .align(Alignment.Center)
                             .size(56.dp)
-                            .clip(CircleShape)
+                            .clip(playShape)
                             .hazeBlur(
                                 input = HazeInput.Sources(hazeState),
                                 style = HazeMaterials.ultraThin(),
@@ -1148,7 +1225,7 @@ private fun PlayerStage(
                                 scaleX = playScale
                                 scaleY = playScale
                             },
-                    shape = CircleShape,
+                    shape = playShape,
                     color = Color.Transparent,
                     contentColor = Color.White,
                 ) {
@@ -1248,6 +1325,45 @@ private fun PlayerStage(
             }
         }
 
+        AnimatedVisibility(
+            visible = boost,
+            modifier =
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 12.dp)
+                    .zIndex(2f),
+            enter =
+                fadeIn(tween(120)) +
+                    scaleIn(
+                        initialScale = 0.7f,
+                        animationSpec =
+                            spring(
+                                dampingRatio = 0.56f,
+                                stiffness = Spring.StiffnessMediumLow,
+                            ),
+                    ),
+            exit = fadeOut(tween(150)) + scaleOut(targetScale = 0.85f, animationSpec = tween(150)),
+        ) {
+            Surface(
+                shape = playShape,
+                color = Color.Black.copy(alpha = 0.6f),
+                contentColor = Color.White,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "2x",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Color.White,
+                    )
+                    Spacer(Modifier.width(7.dp))
+                    BoostChevrons(tint = Color.White)
+                }
+            }
+        }
+
         if (relatedContent != null) {
             AnimatedVisibility(
                 visible = relatedVisible,
@@ -1328,6 +1444,44 @@ private fun PlayerStage(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun BoostChevrons(tint: Color) {
+    val transition = rememberInfiniteTransition(label = "boost-chevrons")
+    val phase by
+        transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec =
+                infiniteRepeatable(
+                    animation = tween(620, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse,
+                ),
+            label = "boost-chevrons-phase",
+        )
+    Canvas(Modifier.size(width = 21.dp, height = 14.dp)) {
+        val unit = size.height / 14f
+        val stroke = 2.1f * unit
+        val slide = phase * 3.2f * unit
+        for (index in 0..1) {
+            val x = 2.5f * unit + index * 7.4f * unit + slide
+            drawLine(
+                color = tint,
+                start = Offset(x, 2.4f * unit),
+                end = Offset(x + 4.8f * unit, 7f * unit),
+                strokeWidth = stroke,
+                cap = StrokeCap.Round,
+            )
+            drawLine(
+                color = tint,
+                start = Offset(x + 4.8f * unit, 7f * unit),
+                end = Offset(x, 11.6f * unit),
+                strokeWidth = stroke,
+                cap = StrokeCap.Round,
+            )
         }
     }
 }
