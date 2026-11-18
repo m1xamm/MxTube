@@ -19,10 +19,12 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -126,6 +128,7 @@ fun PlayerSettingsOverlay(
     onSpeedSelected: (Float) -> Unit,
 ) {
     var page by remember { mutableStateOf<SettingsPage?>(null) }
+    val sizeSpec = MaterialTheme.motionScheme.defaultSpatialSpec<IntSize>()
     BackHandler(enabled = page != null) { page = null }
 
     val shape = RoundedCornerShape(30.dp)
@@ -261,18 +264,14 @@ fun PlayerSettingsOverlay(
                     }
                     AnimatedContent(
                         targetState = page,
-                        modifier =
-                            Modifier.animateContentSize(
-                                animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
-                                alignment = Alignment.BottomCenter,
-                            ),
                         transitionSpec = {
+                            val size = SizeTransform(clip = false) { _, _ -> sizeSpec }
                             if (targetState != null) {
                                 (slideInHorizontally { it / 3 } + fadeIn(tween(180))) togetherWith
-                                    (slideOutHorizontally { -it / 3 } + fadeOut(tween(120)))
+                                    (slideOutHorizontally { -it / 3 } + fadeOut(tween(120))) using size
                             } else {
                                 (slideInHorizontally { -it / 3 } + fadeIn(tween(180))) togetherWith
-                                    (slideOutHorizontally { it / 3 } + fadeOut(tween(120)))
+                                    (slideOutHorizontally { it / 3 } + fadeOut(tween(120))) using size
                             }
                         },
                         label = "settings-page",
