@@ -743,6 +743,7 @@ fun PlayerScreen(
                                     onSelect = onQueueSelect,
                                     onShuffle = { onQueueShuffle(!playlistQueue.shuffled) },
                                     onLoop = { onQueueLoop(!playlistQueue.loop) },
+                                    hazeState = hazeState,
                                     modifier =
                                         Modifier.graphicsLayer { alpha = detailsAlpha },
                                 )
