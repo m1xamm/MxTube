@@ -158,6 +158,7 @@ fun ChannelScreen(
     viewModel: ChannelViewModel,
     onBack: () -> Unit,
     onVideoClick: (VideoSummary, List<VideoSummary>) -> Unit,
+    onPlaylistQueue: (com.m1xamm.mxtube.ui.player.PlaylistQueue) -> Unit = {},
     modifier: Modifier = Modifier,
     onSheetVisibilityChange: (Boolean) -> Unit = {},
 ) {
@@ -274,6 +275,7 @@ fun ChannelScreen(
                             playlist = selectedPlaylist,
                             hasMiniPlayer = miniVisible,
                             onVideoClick = onVideoClick,
+                            onPlaylistQueue = onPlaylistQueue,
                             onRetry = viewModel::retryPlaylist,
                             onLoadMore = viewModel::loadMore,
                         )
@@ -453,7 +455,7 @@ private fun ChannelActionToolbar(
                 drawContent()
                 val inset = 8.dp.toPx()
                 val radius = corner.toPx()
-                val outer = Path().apply { addRect(Rect(0f, 0f, size.width, size.height)) }
+                val outer = Path().apply { addRect(Rect(0f, 0f, size.width, size.height - inset)) }
                 val panel =
                     Path().apply {
                         addRoundRect(
@@ -899,6 +901,7 @@ private fun PlaylistDetailList(
     playlist: PlaylistSummary,
     hasMiniPlayer: Boolean,
     onVideoClick: (VideoSummary, List<VideoSummary>) -> Unit,
+    onPlaylistQueue: (com.m1xamm.mxtube.ui.player.PlaylistQueue) -> Unit,
     onRetry: () -> Unit,
     onLoadMore: () -> Unit,
 ) {
@@ -990,9 +993,12 @@ private fun PlaylistDetailList(
                 if (first != null) {
                     Button(
                         onClick = {
-                            onVideoClick(
-                                first,
-                                state.playlistVideos.filterNot { it.url == first.url }.take(16),
+                            onPlaylistQueue(
+                                com.m1xamm.mxtube.ui.player.PlaylistQueue(
+                                    title = playlist.name,
+                                    videos = state.playlistVideos,
+                                    index = 0,
+                                ),
                             )
                         },
                         modifier = Modifier.padding(horizontal = 16.dp),
@@ -1022,7 +1028,15 @@ private fun PlaylistDetailList(
         itemsIndexed(state.playlistVideos, key = { _, video -> video.url }) { index, video ->
             VideoRow(
                 video = video,
-                onClick = { onVideoClick(video, state.playlistVideos.filterNot { it.url == video.url }.take(16)) },
+                onClick = {
+                    onPlaylistQueue(
+                        com.m1xamm.mxtube.ui.player.PlaylistQueue(
+                            title = playlist.name,
+                            videos = state.playlistVideos,
+                            index = index,
+                        ),
+                    )
+                },
                 topCorner = if (index == 0) 28.dp else 4.dp,
                 bottomCorner = if (index == state.playlistVideos.lastIndex) 28.dp else 4.dp,
                 showUploader = false,

@@ -166,4 +166,8 @@
     </plurals>
     <string name="playlist_label">Playlist</string>
     <string name="playlist_play_all">Play all</string>
+    <string name="playlist_queue_title">From %1$s</string>
+    <string name="playlist_queue_end">End of playlist</string>
+    <string name="playlist_shuffle">Shuffle</string>
+    <string name="playlist_loop">Repeat</string>
 </resources>

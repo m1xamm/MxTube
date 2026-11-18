@@ -168,4 +168,8 @@
     </plurals>
     <string name="playlist_label">Плейлист</string>
     <string name="playlist_play_all">Дивитися все</string>
+    <string name="playlist_queue_title">З плейлиста «%1$s»</string>
+    <string name="playlist_queue_end">Кінець плейлиста</string>
+    <string name="playlist_shuffle">Перемішати</string>
+    <string name="playlist_loop">Повтор</string>
 </resources>

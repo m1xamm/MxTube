@@ -1,6 +1,7 @@
 package com.m1xamm.mxtube
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
@@ -10,8 +11,11 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
@@ -55,6 +59,7 @@ import com.m1xamm.mxtube.ui.nav.MainTab
 import com.m1xamm.mxtube.ui.nav.MxBottomNav
 import com.m1xamm.mxtube.ui.nav.SectionPlaceholder
 import com.m1xamm.mxtube.ui.player.MiniPlayer
+import com.m1xamm.mxtube.ui.player.PlaylistQueue
 import com.m1xamm.mxtube.ui.player.PlayerScreen
 import com.m1xamm.mxtube.ui.search.SearchScreen
 import com.m1xamm.mxtube.ui.search.SearchViewModel
@@ -181,11 +186,13 @@ fun MxTubeApp(
         playerReturnChannel = url
         closePlayer()
     }
+    var playlistQueue by remember { mutableStateOf<PlaylistQueue?>(null) }
     val openPlayer: (VideoSummary, List<VideoSummary>, String?) -> Unit = { video, related, returnChannel ->
         miniVideo = null
         miniBridge = null
         miniExpandTarget = null
         pendingExpand = null
+        playlistQueue = null
         playerRelated = related.filter { it.url != video.url }.take(8)
         playerReturnChannel = returnChannel
         playerFullscreen = false
@@ -194,6 +201,23 @@ fun MxTubeApp(
         playerMorphFrom = HeroSource.get(video.url)
         shownVideo = video
         selectedVideo = video
+    }
+    val playQueueIndex: (Int, PlaylistQueue?) -> Unit = { index, source ->
+        val queue = source ?: playlistQueue
+        val video = queue?.videos?.getOrNull(index)
+        if (queue != null && video != null) {
+            scope.launch {
+                historyStore.recordWatch(video, HomeTopics.topicsFor(null, video.title, video.uploader))
+                homeViewModel.onWatchRecorded()
+            }
+            playlistQueue = queue.copy(index = index)
+            playerRelated = queue.videos.filter { it.url != video.url }.take(8)
+            playerMorphFrom = null
+            playerMorphTo = null
+            playerBridge = null
+            shownVideo = video
+            selectedVideo = video
+        }
     }
     val startMiniExpand: () -> Unit = {
         val video = miniVideo
@@ -264,7 +288,20 @@ fun MxTubeApp(
                     .background(MaterialTheme.colorScheme.background),
         ) {
         Box(Modifier.fillMaxSize().hazeSource(navHazeState)) {
-            when (selectedTab) {
+            AnimatedContent(
+                targetState = selectedTab,
+                transitionSpec = {
+                    val direction = if (targetState.ordinal > initialState.ordinal) 1 else -1
+                    slideInHorizontally(
+                        animationSpec = tween(300, easing = FastOutSlowInEasing),
+                    ) { width -> direction * width } togetherWith
+                        slideOutHorizontally(
+                            animationSpec = tween(300, easing = FastOutSlowInEasing),
+                        ) { width -> -direction * width }
+                },
+                label = "main-tabs",
+            ) { tab ->
+            when (tab) {
                 MainTab.Home ->
                     SearchScreen(
                         viewModel = searchViewModel,
@@ -303,6 +340,7 @@ fun MxTubeApp(
                 MainTab.Settings -> SettingsScreen()
 
                 else -> SectionPlaceholder(tab = selectedTab)
+            }
             }
         }
 
@@ -355,6 +393,28 @@ fun MxTubeApp(
                             }
                             openPlayer(video, related, null)
                         },
+                        onPlaylistQueue = { queue ->
+                            val video = queue.current
+                            if (video != null) {
+                                scope.launch {
+                                    historyStore.recordWatch(video, HomeTopics.topicsFor(null, video.title, video.uploader))
+                                    homeViewModel.onWatchRecorded()
+                                }
+                                miniVideo = null
+                                miniBridge = null
+                                miniExpandTarget = null
+                                pendingExpand = null
+                                playerRelated = queue.videos.filter { it.url != video.url }.take(8)
+                                playerReturnChannel = selectedChannelUrl
+                                playerFullscreen = false
+                                playerBridge = null
+                                playerMorphTo = null
+                                playerMorphFrom = HeroSource.get(video.url)
+                                playlistQueue = queue
+                                shownVideo = video
+                                selectedVideo = video
+                            }
+                        },
                     )
                 }
             }
@@ -363,7 +423,12 @@ fun MxTubeApp(
         AnimatedVisibility(
             visible = selectedVideo != null,
             modifier = Modifier.fillMaxSize(),
-            enter = if (playerMorphFrom != null) androidx.compose.animation.EnterTransition.None else fadeIn(tween(140)),
+            enter =
+                if (playerMorphFrom != null) {
+                    androidx.compose.animation.EnterTransition.None
+                } else {
+                    fadeIn(tween(200)) + scaleIn(initialScale = 0.94f, animationSpec = tween(280))
+                },
             exit = if (playerMorphTo != null) androidx.compose.animation.ExitTransition.None else fadeOut(tween(160)),
         ) {
             shownVideo?.let { video ->
@@ -395,6 +460,14 @@ fun MxTubeApp(
                         },
                         startFullscreen = playerFullscreen,
                         onFullscreenChanged = { playerFullscreen = it },
+                        playlistQueue = playlistQueue,
+                        onQueueSelect = { index -> playQueueIndex(index, null) },
+                        onQueueShuffle = { enabled -> playlistQueue = playlistQueue?.withShuffle(enabled) },
+                        onQueueLoop = { enabled -> playlistQueue = playlistQueue?.copy(loop = enabled) },
+                        onEnded = {
+                            val next = playlistQueue?.next()
+                            if (next != null) playQueueIndex(next.index, next)
+                        },
                         morphFrom = playerMorphFrom,
                         morphTo = playerMorphTo,
                         morphFromCorner = 20f,
