@@ -261,13 +261,18 @@ fun PlayerSettingsOverlay(
                     }
                     AnimatedContent(
                         targetState = page,
+                        modifier =
+                            Modifier.animateContentSize(
+                                animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+                                alignment = Alignment.BottomCenter,
+                            ),
                         transitionSpec = {
                             if (targetState != null) {
-                                (slideInHorizontally { it / 4 } + fadeIn(tween(160))) togetherWith
-                                    (slideOutHorizontally { -it / 4 } + fadeOut(tween(100)))
+                                (slideInHorizontally { it / 3 } + fadeIn(tween(180))) togetherWith
+                                    (slideOutHorizontally { -it / 3 } + fadeOut(tween(120)))
                             } else {
-                                (slideInHorizontally { -it / 4 } + fadeIn(tween(160))) togetherWith
-                                    (slideOutHorizontally { it / 4 } + fadeOut(tween(100)))
+                                (slideInHorizontally { -it / 3 } + fadeIn(tween(180))) togetherWith
+                                    (slideOutHorizontally { it / 3 } + fadeOut(tween(120)))
                             }
                         },
                         label = "settings-page",
