@@ -390,7 +390,7 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(video.url) {
-        if (PlaybackHolder.preparedKey != video.url) {
+        if (PlaybackHolder.preparedKey?.startsWith("${video.url}#") != true) {
             exoPlayer.pause()
         }
     }
@@ -439,23 +439,24 @@ fun PlayerScreen(
         val info = state.info ?: return@LaunchedEffect
         val quality = info.qualities.getOrNull(state.selectedQualityIndex) ?: return@LaunchedEffect
         val audioTrack = info.audioTracks.getOrNull(state.selectedAudioTrackIndex)
-
+        val sourceKey = "${video.url}#${quality.videoUrl}#${audioTrack?.url.orEmpty()}"
         try {
+            val sameVideo = PlaybackHolder.preparedKey?.startsWith("${video.url}#") == true
             val prepared =
-                PlaybackHolder.preparedKey == video.url &&
+                PlaybackHolder.preparedKey == sourceKey &&
                     exoPlayer.mediaItemCount > 0 &&
                     exoPlayer.playbackState != Player.STATE_IDLE
-            val resumePosition = if (prepared) exoPlayer.currentPosition else 0L
-            val resumePlaying = if (prepared) exoPlayer.playWhenReady else true
-            val source = buildMediaSource(context, quality, audioTrack, info)
-
-            exoPlayer.setMediaSource(source)
-            exoPlayer.prepare()
-            if (prepared) exoPlayer.seekTo(resumePosition)
+            if (!prepared) {
+                val resumePosition = if (sameVideo) exoPlayer.currentPosition else 0L
+                val resumePlaying = if (sameVideo) exoPlayer.playWhenReady else true
+                val source = buildMediaSource(context, quality, audioTrack, info)
+                exoPlayer.setMediaSource(source)
+                exoPlayer.prepare()
+                if (resumePosition > 0) exoPlayer.seekTo(resumePosition)
+                exoPlayer.playWhenReady = resumePlaying
+            }
             exoPlayer.setPlaybackSpeed(speed)
-            exoPlayer.playWhenReady = resumePlaying
-            if (!prepared) exoPlayer.play()
-            PlaybackHolder.preparedKey = video.url
+            PlaybackHolder.preparedKey = sourceKey
             playbackError = false
         } catch (_: Exception) {
             playbackError = true
@@ -716,13 +717,22 @@ fun PlayerScreen(
                                 onDraggingChanged = onDraggingChanged,
                                 onPlayPause = onPlayPause,
                                 speed = speed,
+                                ended = ended,
+                                endSuggestions =
+                                    state.related.filter { it.url != video.url }.take(4),
+                                onEndSuggestionClick = { next -> onRelatedClick(next) },
+                                onReplay = {
+                                    onSeek(0L)
+                                    exoPlayer.play()
+                                },
                                 bridgeFrame = bridgeFrame,
                                 onVideoView = { videoView.value = it },
                                 onBoostChanged = boostPlayback,
                                 modifier =
                                     Modifier
                                         .fillMaxWidth()
-                                        .aspectRatio(16f / 9f),
+                                        .aspectRatio(16f / 9f)
+                                        .clip(RoundedCornerShape(20.dp)),
                             )
 
                             if (playlistQueue != null) {
@@ -834,6 +844,10 @@ private fun PlayerStage(
     onDraggingChanged: (Boolean) -> Unit,
     onPlayPause: () -> Unit,
     speed: Float = 1f,
+    ended: Boolean = false,
+    endSuggestions: List<VideoSummary> = emptyList(),
+    onEndSuggestionClick: (VideoSummary) -> Unit = {},
+    onReplay: () -> Unit = {},
     bridgeFrame: Bitmap? = null,
     onVideoView: (View) -> Unit = {},
     onBoostChanged: (Boolean) -> Unit = {},
@@ -905,16 +919,21 @@ private fun PlayerStage(
                 .pointerInput(Unit) {
                     val longPressTimeout = viewConfiguration.longPressTimeoutMillis
                     detectTapGestures(
-                        onPress = {
+                        onPress = { pressOffset ->
                             boostJob?.cancel()
-                            boostJob =
-                                gestureScope.launch {
-                                    delay(longPressTimeout + 16)
-                                    if (playingState.value) {
-                                        boost = true
-                                        boostHandler.value(true)
+                            val sidePress =
+                                pressOffset.x < size.width / 3f ||
+                                    pressOffset.x > size.width * 2f / 3f
+                            if (sidePress) {
+                                boostJob =
+                                    gestureScope.launch {
+                                        delay(longPressTimeout + 16)
+                                        if (playingState.value) {
+                                            boost = true
+                                            boostHandler.value(true)
+                                        }
                                     }
-                                }
+                            }
                             tryAwaitRelease()
                             boostJob?.cancel()
                             if (boost) {
@@ -1017,15 +1036,15 @@ private fun PlayerStage(
                         setStyle(
                             CaptionStyleCompat(
                                 android.graphics.Color.WHITE,
-                                android.graphics.Color.argb(191, 0, 0, 0),
+                                android.graphics.Color.argb(140, 0, 0, 0),
                                 android.graphics.Color.TRANSPARENT,
                                 CaptionStyleCompat.EDGE_TYPE_NONE,
                                 android.graphics.Color.WHITE,
                                 null,
                             ),
                         )
-                        setFractionalTextSize(0.075f)
-                        setBottomPaddingFraction(0.22f)
+                        setFractionalTextSize(0.08f)
+                        setBottomPaddingFraction(0.12f)
                     }
                     player = exoPlayer
                     onVideoView(this)
@@ -1033,7 +1052,21 @@ private fun PlayerStage(
             },
             update = { view ->
                 view.player = exoPlayer
-                view.getSubtitleView()?.translationY = -subtitleShift
+                view.getSubtitleView()?.apply {
+                    translationY = -subtitleShift
+                    setFractionalTextSize(if (isFullscreen) 0.045f else 0.08f)
+                }
+                val radius = if (isFullscreen) 0f else 20f * view.resources.displayMetrics.density
+                view.outlineProvider =
+                    object : android.view.ViewOutlineProvider() {
+                        override fun getOutline(
+                            target: android.view.View,
+                            outline: android.graphics.Outline,
+                        ) {
+                            outline.setRoundRect(0, 0, target.width, target.height, radius)
+                        }
+                    }
+                view.clipToOutline = true
             },
             onRelease = { view -> view.player = null },
             modifier =
@@ -1049,6 +1082,19 @@ private fun PlayerStage(
         )
 
         BridgeFrame(bridgeFrame = bridgeFrame)
+
+        AnimatedVisibility(
+            visible = ended && !isFullscreen,
+            enter = fadeIn(tween(220)),
+            exit = fadeOut(tween(160)),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            EndScreen(
+                suggestions = endSuggestions,
+                onReplay = onReplay,
+                onSuggestionClick = onEndSuggestionClick,
+            )
+        }
 
         AnimatedVisibility(
             visible = coverVisible,
@@ -1081,7 +1127,7 @@ private fun PlayerStage(
         }
 
         AnimatedVisibility(
-            visible = controlsVisible,
+            visible = controlsVisible && !(ended && !isFullscreen),
             modifier =
                 Modifier
                     .fillMaxSize()
@@ -1161,46 +1207,48 @@ private fun PlayerStage(
                     )
                 }
 
-                Surface(
-                    onClick = onPlayPause,
-                    interactionSource = playInteractionSource,
-                    modifier =
-                        Modifier
-                            .align(Alignment.Center)
-                            .size(56.dp)
-                            .clip(playShape)
-                            .hazeBlur(
-                                input = HazeInput.Sources(hazeState),
-                                style = HazeMaterials.ultraThin(),
-                            )
-                            .background(Color.Black.copy(alpha = 0.32f))
-                            .graphicsLayer {
-                                scaleX = playScale
-                                scaleY = playScale
-                            },
-                    shape = playShape,
-                    color = Color.Transparent,
-                    contentColor = Color.White,
-                ) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        androidx.compose.animation.Crossfade(
-                            targetState = isBuffering,
-                            animationSpec = tween(140, easing = FastOutSlowInEasing),
-                            label = "play-buffering",
-                        ) { buffering ->
-                            if (buffering) {
-                                LoadingIndicator(
-                                    modifier = Modifier.size(28.dp),
-                                    color = Color.White,
+                if (!ended) {
+                    Surface(
+                        onClick = onPlayPause,
+                        interactionSource = playInteractionSource,
+                        modifier =
+                            Modifier
+                                .align(Alignment.Center)
+                                .size(56.dp)
+                                .clip(playShape)
+                                .hazeBlur(
+                                    input = HazeInput.Sources(hazeState),
+                                    style = HazeMaterials.ultraThin(),
                                 )
-                            } else {
-                                PlayPauseIcon(
-                                    playing = isPlaying,
-                                    modifier = Modifier.size(30.dp),
-                                    tint = Color.White,
-                                    contentDescription =
-                                        stringResource(if (isPlaying) R.string.player_pause else R.string.player_play),
-                                )
+                                .background(Color.Black.copy(alpha = 0.32f))
+                                .graphicsLayer {
+                                    scaleX = playScale
+                                    scaleY = playScale
+                                },
+                        shape = playShape,
+                        color = Color.Transparent,
+                        contentColor = Color.White,
+                    ) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            androidx.compose.animation.Crossfade(
+                                targetState = isBuffering,
+                                animationSpec = tween(140, easing = FastOutSlowInEasing),
+                                label = "play-buffering",
+                            ) { buffering ->
+                                if (buffering) {
+                                    LoadingIndicator(
+                                        modifier = Modifier.size(28.dp),
+                                        color = Color.White,
+                                    )
+                                } else {
+                                    PlayPauseIcon(
+                                        playing = isPlaying,
+                                        modifier = Modifier.size(30.dp),
+                                        tint = Color.White,
+                                        contentDescription =
+                                            stringResource(if (isPlaying) R.string.player_pause else R.string.player_play),
+                                    )
+                                }
                             }
                         }
                     }
@@ -1283,7 +1331,7 @@ private fun PlayerStage(
             modifier =
                 Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = 12.dp)
+                    .padding(top = 6.dp)
                     .zIndex(2f),
             enter =
                 fadeIn(tween(120)) +
@@ -1300,17 +1348,18 @@ private fun PlayerStage(
             Surface(
                 modifier =
                     Modifier
-                        .clip(RoundedCornerShape(50))
+                        .height(32.dp)
+                        .clip(RoundedCornerShape(16.dp))
                         .hazeBlur(
                             input = HazeInput.Sources(hazeState),
                             style = HazeMaterials.ultraThin(),
                         ),
-                shape = RoundedCornerShape(50),
+                shape = RoundedCornerShape(16.dp),
                 color = Color.Transparent,
                 contentColor = chromeContent,
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    modifier = Modifier.fillMaxHeight().padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
@@ -1318,7 +1367,7 @@ private fun PlayerStage(
                         style = MaterialTheme.typography.labelLarge,
                         color = chromeContent,
                     )
-                    Spacer(Modifier.width(7.dp))
+                    Spacer(Modifier.width(8.dp))
                     BoostChevrons(tint = chromeContent)
                 }
             }
@@ -1409,6 +1458,121 @@ private fun PlayerStage(
 }
 
 @Composable
+private fun EndScreen(
+    suggestions: List<VideoSummary>,
+    onReplay: () -> Unit,
+    onSuggestionClick: (VideoSummary) -> Unit,
+) {
+    val items = suggestions.take(3)
+    var autoplay by remember { mutableStateOf(items.isNotEmpty()) }
+    var remaining by remember { mutableIntStateOf(AUTOPLAY_SECONDS) }
+    val currentSuggestionClick = rememberUpdatedState(onSuggestionClick)
+
+    LaunchedEffect(items.firstOrNull()?.url, autoplay) {
+        val next = items.firstOrNull() ?: return@LaunchedEffect
+        if (!autoplay) return@LaunchedEffect
+        remaining = AUTOPLAY_SECONDS
+        while (remaining > 0) {
+            delay(1_000)
+            remaining -= 1
+        }
+        currentSuggestionClick.value(next)
+    }
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.72f))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+    ) {
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    onClick = onReplay,
+                    modifier = Modifier.size(36.dp),
+                    shape = CircleShape,
+                    color = Color.White.copy(alpha = 0.18f),
+                    contentColor = Color.White,
+                ) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_refresh_rounded),
+                            contentDescription = stringResource(R.string.player_replay),
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                if (autoplay && items.isNotEmpty()) {
+                    Surface(
+                        onClick = { autoplay = false },
+                        shape = RoundedCornerShape(50),
+                        color = Color.White.copy(alpha = 0.18f),
+                        contentColor = Color.White,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.player_next_in, remaining),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontFeatureSettings = "tnum",
+                            ),
+                            color = Color.White,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items.take(3).forEach { video ->
+                        EndSuggestion(
+                            video = video,
+                            onClick = { onSuggestionClick(video) },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EndSuggestion(
+    video: VideoSummary,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier =
+            modifier
+                .clip(RoundedCornerShape(12.dp))
+                .clickable(onClick = onClick)
+                .padding(2.dp),
+    ) {
+        AsyncImage(
+            model = video.thumbnailUrl,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(16f / 9f)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color.White.copy(alpha = 0.08f)),
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = video.title,
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.White,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
 private fun BoostChevrons(tint: Color) {
     val transition = rememberInfiniteTransition(label = "boost-chevrons")
     val phase by
@@ -1417,26 +1581,33 @@ private fun BoostChevrons(tint: Color) {
             targetValue = 1f,
             animationSpec =
                 infiniteRepeatable(
-                    animation = tween(620, easing = FastOutSlowInEasing),
-                    repeatMode = RepeatMode.Reverse,
+                    animation = tween(900, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart,
                 ),
             label = "boost-chevrons-phase",
         )
-    Canvas(Modifier.size(width = 21.dp, height = 14.dp)) {
+    Canvas(Modifier.size(width = 26.dp, height = 14.dp)) {
         val unit = size.height / 14f
         val stroke = 2.1f * unit
-        val slide = phase * 3.2f * unit
-        for (index in 0..1) {
-            val x = 2.5f * unit + index * 7.4f * unit + slide
+        for (index in 0..2) {
+            val local = (phase + index * 0.22f) % 1f
+            val alpha =
+                (when {
+                    local < 0.18f -> local / 0.18f
+                    local > 0.82f -> (1f - local) / 0.18f
+                    else -> 1f
+                }).coerceIn(0f, 1f)
+            val x = 1.6f * unit + index * 6.6f * unit + local * 4.2f * unit
+            val color = tint.copy(alpha = alpha)
             drawLine(
-                color = tint,
+                color = color,
                 start = Offset(x, 2.4f * unit),
                 end = Offset(x + 4.8f * unit, 7f * unit),
                 strokeWidth = stroke,
                 cap = StrokeCap.Round,
             )
             drawLine(
-                color = tint,
+                color = color,
                 start = Offset(x + 4.8f * unit, 7f * unit),
                 end = Offset(x, 11.6f * unit),
                 strokeWidth = stroke,
@@ -1455,12 +1626,12 @@ private fun PlayerSpeedChip(
         modifier =
             Modifier
                 .height(32.dp)
-                .clip(RoundedCornerShape(50))
+                .clip(RoundedCornerShape(16.dp))
                 .hazeBlur(
                     input = HazeInput.Sources(hazeState),
                     style = HazeMaterials.ultraThin(),
                 )
-                .padding(horizontal = 10.dp),
+                .padding(horizontal = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -1859,6 +2030,7 @@ private fun PlayerDetails(
 }
 
 private const val MAX_PORTRAIT_RELATED = 30
+private const val AUTOPLAY_SECONDS = 8
 
 @Composable
 internal fun ChannelSubscribeCard(

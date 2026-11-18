@@ -93,6 +93,8 @@
     <string name="player_subtitles_auto">Авто</string>
     <string name="player_subtitles_empty">Для цього відео субтитрів немає.</string>
     <string name="player_none">Немає</string>
+    <string name="player_next_in">Далі · %1$d</string>
+    <string name="player_replay">Повторити</string>
     <string name="player_related">Схожі відео</string>
     <string name="player_related_error">Не вдалося завантажити ще відео</string>
     <string name="player_related_empty">Схожих відео поки немає.</string>

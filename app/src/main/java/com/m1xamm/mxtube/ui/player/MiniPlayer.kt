@@ -6,6 +6,8 @@ import android.graphics.Bitmap
 import android.view.TextureView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -115,7 +117,7 @@ fun MiniPlayer(
     val videoView = remember { mutableStateOf<PlayerView?>(null) }
     val expandProgress = remember { Animatable(0f) }
     val collapseProgress = remember(collapseFrom) { Animatable(if (collapseFrom == null) 1f else 0f) }
-    val expandSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
+    val expandSpec = tween<Float>(380, easing = CubicBezierEasing(0.26f, 1.06f, 0.18f, 1f))
     val landExpand = rememberUpdatedState(onExpandLanded)
     val landCollapse = rememberUpdatedState(onCollapseLanded)
     LaunchedEffect(expandTarget) {
@@ -169,8 +171,8 @@ fun MiniPlayer(
         player.addListener(listener)
         onDispose { player.removeListener(listener) }
     }
-    LaunchedEffect(controlsVisible) {
-        if (controlsVisible) {
+    LaunchedEffect(controlsVisible, playing) {
+        if (controlsVisible && playing) {
             delay(3000)
             controlsVisible = false
         }
@@ -399,13 +401,13 @@ fun MiniPlayer(
                         Surface(
                             onClick = {
                                 togglePlay()
-                                controlsVisible = false
+                                controlsVisible = true
                             },
                             modifier =
                                 Modifier
                                     .align(Alignment.TopStart)
-                                    .padding(6.dp)
-                                    .size(26.dp),
+                                    .padding(8.dp)
+                                    .size(40.dp),
                             shape = CircleShape,
                             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.58f),
                             contentColor = MaterialTheme.colorScheme.onSurface,
@@ -414,7 +416,7 @@ fun MiniPlayer(
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 PlayPauseIcon(
                                     playing = playing,
-                                    modifier = Modifier.size(14.dp),
+                                    modifier = Modifier.size(20.dp),
                                     tint = MaterialTheme.colorScheme.onSurface,
                                     contentDescription =
                                         stringResource(
@@ -432,8 +434,8 @@ fun MiniPlayer(
                             modifier =
                                 Modifier
                                     .align(Alignment.TopEnd)
-                                    .padding(6.dp)
-                                    .size(26.dp),
+                                    .padding(8.dp)
+                                    .size(40.dp),
                             shape = CircleShape,
                             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.58f),
                             contentColor = MaterialTheme.colorScheme.onSurface,
@@ -443,7 +445,7 @@ fun MiniPlayer(
                                 Icon(
                                     painter = painterResource(R.drawable.ic_close_rounded),
                                     contentDescription = stringResource(R.string.close),
-                                    modifier = Modifier.size(14.dp),
+                                    modifier = Modifier.size(20.dp),
                                     tint = MaterialTheme.colorScheme.onSurface,
                                 )
                             }

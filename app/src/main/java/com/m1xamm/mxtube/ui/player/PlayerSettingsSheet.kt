@@ -205,13 +205,6 @@ fun PlayerSettingsOverlay(
                         .widthIn(max = 520.dp)
                         .fillMaxWidth()
                         .heightIn(max = panelMaxHeight)
-                        .animateContentSize(
-                            animationSpec =
-                                spring(
-                                    dampingRatio = Spring.DampingRatioNoBouncy,
-                                    stiffness = Spring.StiffnessMediumLow,
-                                ),
-                        )
                         .offset { IntOffset(0, animatedDragOffset.roundToInt()) }
                         .clip(shape)
                         .hazeBlur(
@@ -264,6 +257,7 @@ fun PlayerSettingsOverlay(
                     }
                     AnimatedContent(
                         targetState = page,
+                        contentAlignment = Alignment.BottomCenter,
                         transitionSpec = {
                             val size = SizeTransform(clip = false) { _, _ -> sizeSpec }
                             if (targetState != null) {

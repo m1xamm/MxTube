@@ -93,6 +93,8 @@
     <string name="player_subtitles_auto">Auto</string>
     <string name="player_subtitles_empty">No subtitles for this video.</string>
     <string name="player_none">None</string>
+    <string name="player_next_in">Up next · %1$d</string>
+    <string name="player_replay">Replay</string>
     <string name="player_related">Similar videos</string>
     <string name="player_related_error">Could not load more videos</string>
     <string name="player_related_empty">No similar videos yet.</string>

@@ -23,6 +23,8 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -406,8 +408,22 @@ fun ChannelScreen(
                 onDismiss = { menuOpen = false },
             )
         }
-        if (aboutOpen && header != null) {
-            AboutChannelScreen(header = header, onBack = { aboutOpen = false }, modifier = Modifier.fillMaxSize())
+        AnimatedVisibility(
+            visible = aboutOpen && header != null,
+            enter =
+                fadeIn(tween(180)) +
+                    slideInVertically(animationSpec = tween(260, easing = FastOutSlowInEasing)) { it / 20 },
+            exit =
+                fadeOut(tween(140)) +
+                    slideOutVertically(animationSpec = tween(180, easing = FastOutSlowInEasing)) { it / 24 },
+        ) {
+            header?.let {
+                AboutChannelScreen(
+                    header = it,
+                    onBack = { aboutOpen = false },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
         if (searchOpen) {
             GlassBottomSheet(hazeState = haze, title = stringResource(R.string.channel_search), onDismiss = { searchOpen = false }) { _ ->
