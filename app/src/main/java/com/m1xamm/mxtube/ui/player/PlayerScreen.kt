@@ -181,6 +181,7 @@ import com.m1xamm.mxtube.ui.common.findActivity
 import com.m1xamm.mxtube.ui.common.compactCount
 import com.m1xamm.mxtube.ui.common.formatDuration
 import com.m1xamm.mxtube.ui.common.formatRelativeDate
+import com.m1xamm.mxtube.ui.common.formatSpeed
 import com.m1xamm.mxtube.ui.common.formatTime
 import com.m1xamm.mxtube.ui.common.heroImage
 import com.m1xamm.mxtube.ui.common.BridgeFrame
@@ -298,7 +299,7 @@ fun PlayerScreen(
     var isDragging by remember { mutableStateOf(false) }
     var speed by rememberSaveable { mutableFloatStateOf(UserPreferences.playbackSpeed) }
     val boostPlayback: (Boolean) -> Unit = { active ->
-        exoPlayer.setPlaybackSpeed(if (active) 2f else speed)
+        exoPlayer.setPlaybackSpeed(if (active) maxOf(2f, speed) else speed)
     }
     var settingsOpen by remember { mutableStateOf(false) }
     var playbackError by remember { mutableStateOf(false) }
@@ -720,6 +721,7 @@ fun PlayerScreen(
                                 onSeek = onSeek,
                                 onDraggingChanged = onDraggingChanged,
                                 onPlayPause = onPlayPause,
+                                speed = speed,
                                 bridgeFrame = bridgeFrame,
                                 onVideoView = { videoView.value = it },
                                 onBoostChanged = boostPlayback,
@@ -768,6 +770,7 @@ fun PlayerScreen(
                                 onSeek = onSeek,
                                 onDraggingChanged = onDraggingChanged,
                                 onPlayPause = onPlayPause,
+                                speed = speed,
                                 bridgeFrame = bridgeFrame,
                                 onVideoView = { videoView.value = it },
                                 onBoostChanged = boostPlayback,
@@ -886,6 +889,7 @@ private fun PlayerStage(
     onSeek: (Long) -> Unit,
     onDraggingChanged: (Boolean) -> Unit,
     onPlayPause: () -> Unit,
+    speed: Float = 1f,
     bridgeFrame: Bitmap? = null,
     onVideoView: (View) -> Unit = {},
     onBoostChanged: (Boolean) -> Unit = {},
@@ -1192,6 +1196,11 @@ private fun PlayerStage(
                         Spacer(Modifier.weight(1f))
                     }
 
+                    if (kotlin.math.abs(speed - 1f) > 0.001f) {
+                        PlayerSpeedChip(text = formatSpeed(speed), hazeState = hazeState)
+                        Spacer(Modifier.width(6.dp))
+                    }
+
                     PlayerIconButton(
                         iconRes = R.drawable.ic_settings_rounded,
                         contentDescription = stringResource(R.string.player_settings),
@@ -1345,21 +1354,28 @@ private fun PlayerStage(
             exit = fadeOut(tween(150)) + scaleOut(targetScale = 0.85f, animationSpec = tween(150)),
         ) {
             Surface(
-                shape = playShape,
-                color = Color.Black.copy(alpha = 0.6f),
-                contentColor = Color.White,
+                modifier =
+                    Modifier
+                        .clip(RoundedCornerShape(50))
+                        .hazeBlur(
+                            input = HazeInput.Sources(hazeState),
+                            style = HazeMaterials.ultraThin(),
+                        ),
+                shape = RoundedCornerShape(50),
+                color = Color.Transparent,
+                contentColor = chromeContent,
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "2x",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = Color.White,
+                        text = formatSpeed(maxOf(2f, speed)),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = chromeContent,
                     )
                     Spacer(Modifier.width(7.dp))
-                    BoostChevrons(tint = Color.White)
+                    BoostChevrons(tint = chromeContent)
                 }
             }
         }
@@ -1483,6 +1499,32 @@ private fun BoostChevrons(tint: Color) {
                 cap = StrokeCap.Round,
             )
         }
+    }
+}
+
+@Composable
+private fun PlayerSpeedChip(
+    text: String,
+    hazeState: HazeState,
+) {
+    Box(
+        modifier =
+            Modifier
+                .height(32.dp)
+                .clip(RoundedCornerShape(50))
+                .hazeBlur(
+                    input = HazeInput.Sources(hazeState),
+                    style = HazeMaterials.ultraThin(),
+                )
+                .padding(horizontal = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+        )
     }
 }
 
