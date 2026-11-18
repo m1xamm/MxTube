@@ -2,6 +2,7 @@ package com.m1xamm.mxtube.data.youtube
 
 import com.m1xamm.mxtube.AppLocale
 import com.m1xamm.mxtube.R
+import android.util.Log
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.schabi.newpipe.extractor.Extractor
@@ -31,6 +32,10 @@ class YouTubeRepository(
     private val string: (Int) -> String = { AppLocale.string(it) },
     private val locale: () -> Locale = { AppLocale.locale },
 ) {
+    private companion object {
+        const val LOG_TAG = "MxRepository"
+    }
+
     fun search(query: String): YouTubeSearchSession =
         YouTubeSearchSession(
             ServiceList.YouTube.getSearchExtractor(query).withAppLocale(),
@@ -127,7 +132,19 @@ class YouTubeRepository(
             extractor.relatedItems?.items?.videos().orEmpty()
         }
 
-    suspend fun resolve(url: String): PlaybackInfo =
+    suspend fun resolve(url: String): PlaybackInfo {
+        try {
+            return newPipeResolve(url)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w(LOG_TAG, "newpipe resolve failed, trying invidious: $url", error)
+            return InvidiousFallback.resolve(url, string(R.string.player_audio_original))
+                ?: throw error
+        }
+    }
+
+    private suspend fun newPipeResolve(url: String): PlaybackInfo =
         withExtractorContext {
             val extractor = ServiceList.YouTube.getStreamExtractor(url).withAppLocale()
             extractor.fetchPage()

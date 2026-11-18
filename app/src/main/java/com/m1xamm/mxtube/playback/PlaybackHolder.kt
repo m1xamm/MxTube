@@ -3,6 +3,7 @@ package com.m1xamm.mxtube.playback
 import android.content.Context
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 
 object PlaybackHolder {
@@ -21,6 +22,11 @@ object PlaybackHolder {
         return ExoPlayer.Builder(context.applicationContext)
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true)
+            .setLoadControl(
+                DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(20_000, 60_000, 900, 1_800)
+                    .build(),
+            )
             .build()
             .also { player = it }
     }
