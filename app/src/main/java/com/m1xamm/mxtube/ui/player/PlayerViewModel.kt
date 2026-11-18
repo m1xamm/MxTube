@@ -13,6 +13,7 @@ import com.m1xamm.mxtube.data.youtube.PlaybackInfo
 import com.m1xamm.mxtube.data.youtube.VideoSummary
 import com.m1xamm.mxtube.data.youtube.YouTubeRepository
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -53,6 +54,7 @@ class PlayerViewModel(
     private val initialUploaderUrl: String? = null,
     private val initialUploaderName: String = "",
     private val resolveVideo: suspend (String) -> PlaybackInfo = repository::resolve,
+    private val enrichVideo: suspend (String) -> PlaybackInfo? = { repository.resolveSlow(it) },
     private val fetchRelated: suspend (String) -> List<VideoSummary> = repository::related,
 ) : ViewModel() {
     private val relatedSeeds = ArrayDeque<String>()
@@ -74,6 +76,7 @@ class PlayerViewModel(
         }.stateIn(viewModelScope, SharingStarted.Eagerly, PlayerUiState())
 
     private var loadJob: Job? = null
+    private var enrichJob: Job? = null
     private var relatedJob: Job? = null
     private val uploaderKey = MutableStateFlow<String?>(null)
 
@@ -163,6 +166,7 @@ class PlayerViewModel(
     fun load() {
         loadJob?.cancel()
         relatedJob?.cancel()
+        enrichJob?.cancel()
         val current = _uiState.value
         _uiState.value =
             PlayerUiState(
@@ -220,6 +224,12 @@ class PlayerViewModel(
                             relatedError = false,
                         )
                     }
+                    if (info.uploaderAvatarUrl == null ||
+                        info.related.isEmpty() ||
+                        info.uploadedAtEpochMillis == null
+                    ) {
+                        enrich()
+                    }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
@@ -234,7 +244,40 @@ class PlayerViewModel(
         loadRelated()
     }
 
-    fun retryRelated() {
+    private fun enrich() {
+        enrichJob?.cancel()
+        enrichJob =
+            viewModelScope.launch {
+                delay(1400)
+                val full = runCatching { enrichVideo(videoUrl) }.getOrNull() ?: return@launch
+                val merged = mergeRelated(full.related, _uiState.value.related)
+                full.related.forEach { video ->
+                    if (video.url != videoUrl &&
+                        video.url !in expandedSeeds &&
+                        !relatedSeeds.contains(video.url)
+                    ) {
+                        relatedSeeds.addLast(video.url)
+                    }
+                }
+                _uiState.update { state ->
+                    val info = state.info ?: return@update state
+                    state.copy(
+                        info =
+                            info.copy(
+                                uploaderAvatarUrl =
+                                    info.uploaderAvatarUrl ?: full.uploaderAvatarUrl,
+                                uploadedAtEpochMillis =
+                                    info.uploadedAtEpochMillis ?: full.uploadedAtEpochMillis,
+                                viewCount = info.viewCount.takeIf { it > 0 } ?: full.viewCount,
+                                subtitles = info.subtitles.ifEmpty { full.subtitles },
+                                uploaderUrl = info.uploaderUrl ?: full.uploaderUrl,
+                            ),
+                        related = merged,
+                        hasMoreRelated = canLoadMoreRelated(merged),
+                    )
+                }
+            }
+    }    fun retryRelated() {
         val state = _uiState.value
         if (state.info == null || state.error) {
             load()

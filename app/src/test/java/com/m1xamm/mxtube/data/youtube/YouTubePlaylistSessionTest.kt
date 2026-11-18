@@ -110,6 +110,6 @@ class YouTubePlaylistSessionTest {
         override fun getUploaderAvatars(): List<Image> = emptyList()
         override fun isUploaderVerified(): Boolean = false
         override fun getStreamCount(): Long = 3L
-        override fun getDescription(): Description = Description("", Description.PLAIN_TEXT)
+        override fun getDescription(): Description = Description("", Description.Type.PLAIN_TEXT)
     }
 }

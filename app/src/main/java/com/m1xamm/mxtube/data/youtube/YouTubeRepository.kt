@@ -133,6 +133,18 @@ class YouTubeRepository(
         }
 
     suspend fun resolve(url: String): PlaybackInfo {
+        val fast =
+            FastStreamResolver.resolve(
+                url = url,
+                audioLabel = string(R.string.player_audio_original),
+                hl = NewPipe.getPreferredLocalization().languageCode,
+                gl = NewPipe.getPreferredContentCountry().countryCode,
+            )
+        if (fast != null) return fast
+        return resolveSlow(url)
+    }
+
+    suspend fun resolveSlow(url: String): PlaybackInfo {
         try {
             return newPipeResolve(url)
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
