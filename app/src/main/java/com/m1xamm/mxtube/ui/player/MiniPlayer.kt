@@ -96,6 +96,8 @@ fun MiniPlayer(
     onPositionChange: (Offset) -> Unit = {},
     expandTarget: Rect? = null,
     onExpandLanded: (Bitmap?) -> Unit = {},
+    collapseFrom: Rect? = null,
+    onCollapseLanded: () -> Unit = {},
     bridgeFrame: Bitmap? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -112,8 +114,10 @@ fun MiniPlayer(
     val scope = rememberCoroutineScope()
     val videoView = remember { mutableStateOf<PlayerView?>(null) }
     val expandProgress = remember { Animatable(0f) }
+    val collapseProgress = remember(collapseFrom) { Animatable(if (collapseFrom == null) 1f else 0f) }
     val expandSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
     val landExpand = rememberUpdatedState(onExpandLanded)
+    val landCollapse = rememberUpdatedState(onCollapseLanded)
     LaunchedEffect(expandTarget) {
         if (expandTarget != null) {
             expandProgress.snapTo(0f)
@@ -126,6 +130,15 @@ fun MiniPlayer(
             landExpand.value(bitmap)
         } else {
             expandProgress.snapTo(0f)
+        }
+    }
+    LaunchedEffect(collapseFrom) {
+        if (collapseFrom != null) {
+            collapseProgress.snapTo(0f)
+            collapseProgress.animateTo(1f, expandSpec)
+            landCollapse.value()
+        } else {
+            collapseProgress.snapTo(1f)
         }
     }
     val navBarPx =
@@ -275,21 +288,48 @@ fun MiniPlayer(
                             transformOrigin = TransformOrigin(0.5f, 0.5f)
                             clip = true
                             shape = RoundedCornerShape((12f * (1f - p) / scale).dp)
+                        } else if (collapseFrom != null) {
+                            val p = collapseProgress.value.coerceIn(0f, 1f)
+                            val current = position ?: Offset(bounds.value.maxX, bounds.value.maxY)
+                            val currentCenter =
+                                Offset(
+                                    current.x + size.width / 2f,
+                                    current.y + size.height / 2f,
+                                )
+                            val startScale = collapseFrom.width / size.width
+                            val scale = startScale + (1f - startScale) * p
+                            translationX = (collapseFrom.center.x - currentCenter.x) * (1f - p)
+                            translationY = (collapseFrom.center.y - currentCenter.y) * (1f - p)
+                            scaleX = scale
+                            scaleY = scale
+                            transformOrigin = TransformOrigin(0.5f, 0.5f)
+                            clip = true
+                            shape = RoundedCornerShape((12f * p / scale).dp)
                         }
                     },
         ) {
             Surface(
                 modifier = Modifier.fillMaxSize(),
                 shape =
-                    if (expandTarget != null) {
+                    if (expandTarget != null || collapseFrom != null) {
                         androidx.compose.ui.graphics.RectangleShape
                     } else {
                         RoundedCornerShape(12.dp)
                     },
                 color = Color.Black,
-                shadowElevation = if (expandTarget != null) 0.dp else 8.dp,
+                shadowElevation = if (expandTarget != null || collapseFrom != null) 0.dp else 8.dp,
             ) {
-            Box(Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .clip(
+                        if (expandTarget != null || collapseFrom != null) {
+                            androidx.compose.ui.graphics.RectangleShape
+                        } else {
+                            RoundedCornerShape(12.dp)
+                        },
+                    ),
+            ) {
                 AsyncImage(
                     model = video.thumbnailUrl,
                     contentDescription = null,

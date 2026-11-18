@@ -47,7 +47,6 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.m1xamm.mxtube.data.home.HomeTopics
-import com.m1xamm.mxtube.ui.common.HeroSource
 import com.m1xamm.mxtube.ui.common.LocalMiniPlayerVisible
 import com.m1xamm.mxtube.data.youtube.VideoSummary
 import com.m1xamm.mxtube.playback.PlaybackHolder
@@ -99,13 +98,14 @@ fun MxTubeApp(
     val homeListState = rememberLazyListState()
     val searchListState = rememberLazyListState()
     val subscriptionsListState = rememberLazyListState()
-    var playerMorphFrom by remember { mutableStateOf<Rect?>(null) }
     var playerMorphTo by remember { mutableStateOf<Rect?>(null) }
     var playerBridge by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var miniBridge by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var miniExpandTarget by remember { mutableStateOf<Rect?>(null) }
+    var miniCollapseFrom by remember { mutableStateOf<Rect?>(null) }
     var miniPosition by remember { mutableStateOf<Offset?>(null) }
     var pendingExpand by remember { mutableStateOf<VideoSummary?>(null) }
+    var playerEnterFade by remember { mutableStateOf(true) }
     val density = LocalDensity.current
     val container = LocalWindowInfo.current.containerSize
     val statusTopPx =
@@ -129,16 +129,6 @@ fun MxTubeApp(
             bottom,
         )
     }
-    fun miniRect(bottomInset: androidx.compose.ui.unit.Dp): Rect {
-        val default = miniThumbRect(bottomInset)
-        val position = miniPosition ?: return default
-        return Rect(
-            position.x,
-            position.y,
-            position.x + default.width,
-            position.y + default.height,
-        )
-    }
     val showNav = selectedVideo == null && selectedChannelUrl == null && !isSearchActive
     val miniVisible = miniVideo != null && selectedVideo == null && !channelSheetOpen
     val openChannel: (String) -> Unit = { url ->
@@ -151,18 +141,20 @@ fun MxTubeApp(
         miniVideo = null
         miniRelated = emptyList()
         miniBridge = null
+        miniPosition = null
+        miniCollapseFrom = null
     }
     val finishPlayerMorph: (android.graphics.Bitmap?) -> Unit = { bitmap ->
         val playing = shownVideo
-        val target = playerMorphTo
         if (playing != null) {
             miniBridge = bitmap
             miniVideo = playing
             miniRelated = playerRelated
-            if (target != null) miniPosition = target.topLeft
+            miniPosition = null
+            miniCollapseFrom = playerCover
         }
-        playerMorphFrom = null
         playerBridge = null
+        playerMorphTo = null
         selectedVideo = null
     }
 
@@ -171,8 +163,8 @@ fun MxTubeApp(
         if (playing != null) {
             val returnChannel = playerReturnChannel
             val bottomInset = if (returnChannel != null || isSearchActive) bareBottomInset else navBottomInset
-            playerMorphFrom = null
-            playerMorphTo = miniRect(bottomInset)
+            miniPosition = null
+            playerMorphTo = miniThumbRect(bottomInset)
             playerReturnChannel?.let(openChannel)
         }
         playerFullscreen = false
@@ -191,14 +183,15 @@ fun MxTubeApp(
         miniVideo = null
         miniBridge = null
         miniExpandTarget = null
+        miniCollapseFrom = null
         pendingExpand = null
+        playerEnterFade = true
         playlistQueue = null
         playerRelated = related.filter { it.url != video.url }.take(8)
         playerReturnChannel = returnChannel
         playerFullscreen = false
         playerBridge = null
         playerMorphTo = null
-        playerMorphFrom = HeroSource.get(video.url)
         shownVideo = video
         selectedVideo = video
     }
@@ -212,7 +205,6 @@ fun MxTubeApp(
             }
             playlistQueue = queue.copy(index = index)
             playerRelated = queue.videos.filter { it.url != video.url }.take(8)
-            playerMorphFrom = null
             playerMorphTo = null
             playerBridge = null
             shownVideo = video
@@ -222,6 +214,7 @@ fun MxTubeApp(
     val startMiniExpand: () -> Unit = {
         val video = miniVideo
         if (video != null && miniExpandTarget == null) {
+            miniCollapseFrom = null
             pendingExpand = video
             miniExpandTarget = playerCover
         }
@@ -229,8 +222,8 @@ fun MxTubeApp(
     val finishMiniExpand: (android.graphics.Bitmap?) -> Unit = { bitmap ->
         val video = pendingExpand
         if (video != null) {
+            playerEnterFade = false
             playerBridge = bitmap
-            playerMorphFrom = null
             playerMorphTo = null
             playerRelated = miniRelated
             playerReturnChannel = selectedChannelUrl
@@ -240,6 +233,7 @@ fun MxTubeApp(
             miniVideo = null
         }
         miniExpandTarget = null
+        miniCollapseFrom = null
         pendingExpand = null
     }
     LaunchedEffect(miniBridge) {
@@ -265,7 +259,6 @@ fun MxTubeApp(
             playerReturnChannel = null
             playerRelated = emptyList()
             playerFullscreen = false
-            playerMorphFrom = null
             playerMorphTo = null
             playerBridge = null
             miniBridge = null
@@ -403,13 +396,14 @@ fun MxTubeApp(
                                 miniVideo = null
                                 miniBridge = null
                                 miniExpandTarget = null
+                                miniCollapseFrom = null
                                 pendingExpand = null
+                                playerEnterFade = true
                                 playerRelated = queue.videos.filter { it.url != video.url }.take(8)
                                 playerReturnChannel = selectedChannelUrl
                                 playerFullscreen = false
                                 playerBridge = null
                                 playerMorphTo = null
-                                playerMorphFrom = HeroSource.get(video.url)
                                 playlistQueue = queue
                                 shownVideo = video
                                 selectedVideo = video
@@ -424,12 +418,12 @@ fun MxTubeApp(
             visible = selectedVideo != null,
             modifier = Modifier.fillMaxSize(),
             enter =
-                if (playerMorphFrom != null) {
-                    androidx.compose.animation.EnterTransition.None
-                } else {
+                if (playerEnterFade) {
                     fadeIn(tween(200)) + scaleIn(initialScale = 0.94f, animationSpec = tween(280))
+                } else {
+                    androidx.compose.animation.EnterTransition.None
                 },
-            exit = if (playerMorphTo != null) androidx.compose.animation.ExitTransition.None else fadeOut(tween(160)),
+            exit = if (miniVideo != null) androidx.compose.animation.ExitTransition.None else fadeOut(tween(160)),
         ) {
             shownVideo?.let { video ->
                 key(video.url) {
@@ -446,7 +440,6 @@ fun MxTubeApp(
                                 homeViewModel.onWatchRecorded()
                             }
                             playerRelated = emptyList()
-                            playerMorphFrom = null
                             playerMorphTo = null
                             playerBridge = null
                             shownVideo = next
@@ -468,10 +461,7 @@ fun MxTubeApp(
                             val next = playlistQueue?.next()
                             if (next != null) playQueueIndex(next.index, next)
                         },
-                        morphFrom = playerMorphFrom,
                         morphTo = playerMorphTo,
-                        morphFromCorner = 20f,
-                        morphToCorner = 12f,
                         bridgeFrame = playerBridge,
                         onMorphLanded = finishPlayerMorph,
                         modifier = Modifier.fillMaxSize(),
@@ -491,6 +481,8 @@ fun MxTubeApp(
                     onPositionChange = { miniPosition = it },
                     expandTarget = miniExpandTarget,
                     onExpandLanded = finishMiniExpand,
+                    collapseFrom = miniCollapseFrom,
+                    onCollapseLanded = { miniCollapseFrom = null },
                     bridgeFrame = miniBridge,
                 )
             }

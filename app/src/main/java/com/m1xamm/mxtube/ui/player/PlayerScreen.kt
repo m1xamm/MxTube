@@ -19,7 +19,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -183,9 +182,7 @@ import com.m1xamm.mxtube.ui.common.formatDuration
 import com.m1xamm.mxtube.ui.common.formatRelativeDate
 import com.m1xamm.mxtube.ui.common.formatSpeed
 import com.m1xamm.mxtube.ui.common.formatTime
-import com.m1xamm.mxtube.ui.common.heroImage
 import com.m1xamm.mxtube.ui.common.BridgeFrame
-import com.m1xamm.mxtube.ui.common.HeroSource
 import com.m1xamm.mxtube.ui.common.PlayPauseIcon
 import com.m1xamm.mxtube.ui.common.viewsText
 import com.m1xamm.mxtube.ui.search.VideoCluster
@@ -221,10 +218,7 @@ fun PlayerScreen(
     onQueueShuffle: (Boolean) -> Unit = {},
     onQueueLoop: (Boolean) -> Unit = {},
     onEnded: () -> Unit = {},
-    morphFrom: Rect? = null,
     morphTo: Rect? = null,
-    morphFromCorner: Float = 0f,
-    morphToCorner: Float = 0f,
     bridgeFrame: Bitmap? = null,
     onMorphLanded: (Bitmap?) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -306,18 +300,14 @@ fun PlayerScreen(
     var reloadToken by remember { mutableIntStateOf(0) }
     var coverVisible by remember { mutableStateOf(true) }
     var playlistExpanded by remember { mutableStateOf(false) }
-    var detailsVisible by remember { mutableStateOf(morphFrom == null && morphTo == null) }
-    var morphRunning by remember { mutableStateOf(morphFrom != null || morphTo != null) }
-    val morphProgress = remember { Animatable(if (morphFrom != null) 0f else 1f) }
-    val morphSpec =
-        spring<Float>(dampingRatio = 0.86f, stiffness = Spring.StiffnessLow)
+    var detailsVisible by remember { mutableStateOf(morphTo == null) }
     val detailsAlpha by
         animateFloatAsState(
             targetValue = if (detailsVisible) 1f else 0f,
             animationSpec = tween(260, easing = FastOutSlowInEasing),
             label = "player-details-alpha",
         )
-    var revealTarget by remember { mutableFloatStateOf(if (morphFrom != null) 0f else 1f) }
+    var revealTarget by remember { mutableFloatStateOf(1f) }
     val backgroundColor = MaterialTheme.colorScheme.background
     val revealAlpha by
         animateFloatAsState(
@@ -329,30 +319,11 @@ fun PlayerScreen(
     LaunchedEffect(video.url) {
         coverVisible = true
     }
-    LaunchedEffect(morphFrom) {
-        if (morphFrom != null) {
-            morphRunning = true
-            morphProgress.snapTo(0f)
-            revealTarget = 1f
-            launch {
-                delay(70)
-                detailsVisible = true
-            }
-            morphProgress.animateTo(1f, morphSpec)
-            morphRunning = false
-            detailsVisible = true
-        }
-    }
     val closeMorphLanded = rememberUpdatedState(onMorphLanded)
     val endedHandler = rememberUpdatedState(onEnded)
     val videoView = remember { mutableStateOf<View?>(null) }
     LaunchedEffect(morphTo) {
         if (morphTo != null) {
-            detailsVisible = false
-            morphRunning = true
-            morphProgress.snapTo(0f)
-            revealTarget = 0f
-            morphProgress.animateTo(1f, morphSpec)
             val texture = videoView.value?.let { view ->
                 (view as? PlayerView)?.videoSurfaceView as? TextureView
             }
@@ -360,7 +331,6 @@ fun PlayerScreen(
                 texture?.takeIf { it.isAvailable }?.let { view ->
                     runCatching { view.bitmap }.getOrNull()
                 }
-            morphRunning = false
             closeMorphLanded.value(bitmap)
         }
     }
@@ -370,32 +340,7 @@ fun PlayerScreen(
         with(LocalDensity.current) {
             WindowInsets.statusBars.asPaddingValues().calculateTopPadding().toPx()
         }
-    val coverRect = Rect(0f, statusTopPx, windowWidthPx, statusTopPx + windowWidthPx * 9f / 16f)
-    val morphFromState = rememberUpdatedState(morphFrom)
-    val morphToState = rememberUpdatedState(morphTo)
-    val morphModifier =
-        if (!isFullscreen && (morphFrom != null || morphTo != null)) {
-            Modifier.graphicsLayer {
-                val p = morphProgress.value.coerceIn(0f, 1f)
-                val from = morphFromState.value ?: coverRect
-                val to = morphToState.value ?: coverRect
-                val width = from.width + (to.width - from.width) * p
-                val scale = (width / coverRect.width).coerceAtLeast(0.01f)
-                val centerX = from.center.x + (to.center.x - from.center.x) * p
-                val centerY = from.center.y + (to.center.y - from.center.y) * p
-                translationX = centerX - coverRect.center.x
-                translationY = centerY - coverRect.center.y
-                scaleX = scale
-                scaleY = scale
-                transformOrigin = TransformOrigin(0.5f, 0.5f)
-                val corner = morphFromCorner + (morphToCorner - morphFromCorner) * p
-                clip = true
-                shape = RoundedCornerShape((corner / scale).dp)
-            }
-        } else {
-            Modifier
-        }
-    val chromeVisible = controlsVisible && !morphRunning && morphTo == null
+    val chromeVisible = controlsVisible && morphTo == null
 
     val handleBack: () -> Unit = {
         if (subscriptionMenuOpen) {
@@ -777,8 +722,7 @@ fun PlayerScreen(
                                 modifier =
                                     Modifier
                                         .fillMaxWidth()
-                                        .aspectRatio(16f / 9f)
-                                        .then(morphModifier),
+                                        .aspectRatio(16f / 9f),
                             )
 
                             if (playlistQueue != null) {
