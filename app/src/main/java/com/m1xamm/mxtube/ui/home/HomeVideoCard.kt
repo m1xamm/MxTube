@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.m1xamm.mxtube.data.youtube.VideoSummary
+import com.m1xamm.mxtube.ui.common.ChannelAvatar
 import com.m1xamm.mxtube.ui.common.clusterCardColor
 import com.m1xamm.mxtube.ui.common.clusterInnerColor
 import com.m1xamm.mxtube.ui.common.compactCount
@@ -159,6 +160,7 @@ fun HomeVideoCard(
                 ChannelAvatar(
                     avatarUrl = video.uploaderAvatarUrl,
                     uploader = video.uploader,
+                    size = 26.dp,
                 )
                 Spacer(Modifier.width(10.dp))
                 Text(
@@ -187,37 +189,6 @@ fun HomeVideoCard(
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun ChannelAvatar(
-    avatarUrl: String?,
-    uploader: String,
-) {
-    val fallback = clusterInnerColor()
-    Box(
-        modifier =
-            Modifier
-                .size(26.dp)
-                .clip(CircleShape)
-                .background(fallback),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (avatarUrl != null) {
-            AsyncImage(
-                model = avatarUrl,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-        } else {
-            Text(
-                text = uploader.trim().take(1).uppercase(),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }

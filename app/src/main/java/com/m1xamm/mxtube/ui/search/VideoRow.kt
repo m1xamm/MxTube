@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.m1xamm.mxtube.R
 import com.m1xamm.mxtube.data.youtube.VideoSummary
+import com.m1xamm.mxtube.ui.common.ChannelAvatar
 import com.m1xamm.mxtube.ui.common.clusterCardColor
 import com.m1xamm.mxtube.ui.common.clusterInnerColor
 import com.m1xamm.mxtube.ui.common.compactCount
@@ -157,13 +158,21 @@ fun VideoRow(
 
                 if (showUploader) {
                     Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = channel,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ChannelAvatar(
+                            avatarUrl = video.uploaderAvatarUrl,
+                            uploader = channel,
+                            size = 22.dp,
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = channel,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
 
                 if (meta.isNotBlank()) {
