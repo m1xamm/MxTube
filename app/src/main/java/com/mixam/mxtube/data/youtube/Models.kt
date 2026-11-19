@@ -16,6 +16,7 @@ data class SearchBatch(
     val videos: List<VideoSummary>,
     val hasMore: Boolean,
     val channels: List<ChannelSummary> = emptyList(),
+    val playlists: List<PlaylistSummary> = emptyList(),
 )
 
 data class ChannelSummary(

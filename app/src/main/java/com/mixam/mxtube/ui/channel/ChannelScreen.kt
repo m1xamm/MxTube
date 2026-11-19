@@ -1133,11 +1133,20 @@ private fun OverviewCard(video: VideoSummary, startCorner: Dp, endCorner: Dp, on
                 }
             }
             Spacer(Modifier.height(8.dp))
-            Text(video.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            if (meta.isNotBlank()) {
-                Spacer(Modifier.height(4.dp))
-                Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
+            Text(
+                text = video.title,
+                style = MaterialTheme.typography.titleSmall,
+                minLines = 2,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = meta,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
         }
     }
 }

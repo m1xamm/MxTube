@@ -74,6 +74,9 @@ class ChannelViewModel internal constructor(
     private val searchChannelVideos: suspend (ChannelHeader) -> List<VideoSummary> = { header ->
         YouTubeRepository().channelVideosByUploader(header)
     },
+    private val searchChannelPlaylists: suspend (ChannelHeader) -> List<PlaylistSummary> = { header ->
+        YouTubeRepository().channelPlaylistsBySearch(header)
+    },
     private val openChannel: suspend (String) -> ChannelPage,
 ) : ViewModel() {
     constructor(
@@ -88,6 +91,7 @@ class ChannelViewModel internal constructor(
         openPlaylistSource = { repository.playlist(it).asChannelContent() },
         openChannel = repository::channelPage,
         searchChannelVideos = repository::channelVideosByUploader,
+        searchChannelPlaylists = repository::channelPlaylistsBySearch,
     )
 
     private val state = MutableStateFlow(ChannelUiState())
@@ -99,6 +103,7 @@ class ChannelViewModel internal constructor(
     private var playlistSession: ChannelContentSession? = null
     private var videosLoaded = false
     private var videosFallback = false
+    private var playlistsFallback = false
     private var playlistsLoaded = false
     private var loadJob: Job? = null
     private var videosJob: Job? = null
@@ -142,6 +147,7 @@ class ChannelViewModel internal constructor(
         playlistsSession = null
         videosLoaded = false
         videosFallback = false
+        playlistsFallback = false
         playlistsLoaded = false
         state.update {
             it.copy(
@@ -167,6 +173,7 @@ class ChannelViewModel internal constructor(
                 val hasVideoTab = ChannelTabs.VIDEOS in loaded.availableTabs
                 videosFallback = !hasVideoTab
                 videosLoaded = false
+                playlistsFallback = ChannelTabs.PLAYLISTS !in loaded.availableTabs
                 val tabs = buildList {
                     add(ChannelProfileTab.Home)
                     add(ChannelProfileTab.Videos)
@@ -190,7 +197,10 @@ class ChannelViewModel internal constructor(
                     )
                 }
                 subscriptions.updateProfile(loaded.header.key, loaded.header.name, loaded.header.avatarUrl)
-                if (token == generation) ensureSelectedContent()
+                if (token == generation) {
+                    ensureSelectedContent()
+                    if (playlistsFallback) loadFallbackPlaylists()
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -291,7 +301,50 @@ class ChannelViewModel internal constructor(
         }
     }
 
+    private fun loadFallbackPlaylists(force: Boolean = false) {
+        val currentPage = page ?: return
+        if (!force && (playlistsJob?.isActive == true || playlistsLoaded)) return
+        if (force) playlistsJob?.cancel()
+        val token = generation
+        state.update { it.copy(isLoadingPlaylists = true) }
+        playlistsJob = viewModelScope.launch {
+            try {
+                val found =
+                    runCatching { searchChannelPlaylists(currentPage.header) }
+                        .onFailure { Log.w("MxTubeChannel", "topic playlists failed", it) }
+                        .getOrDefault(emptyList())
+                if (token != generation) return@launch
+                playlistsLoaded = true
+                state.update {
+                    val tabs =
+                        if (found.isNotEmpty() && ChannelProfileTab.Playlists !in it.availableTabs) {
+                            val withoutPosts = it.availableTabs.filter { tab -> tab != ChannelProfileTab.Posts }
+                            val posts = it.availableTabs.filter { tab -> tab == ChannelProfileTab.Posts }
+                            withoutPosts + ChannelProfileTab.Playlists + posts
+                        } else {
+                            it.availableTabs
+                        }
+                    it.copy(
+                        availableTabs = tabs,
+                        playlists = found,
+                        isLoadingPlaylists = false,
+                        selectedTab = it.selectedTab.takeIf(tabs::contains) ?: it.selectedTab,
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w("MxTubeChannel", "topic playlists failed", error)
+                state.update { it.copy(isLoadingPlaylists = false) }
+            }
+        }
+    }
+
     private fun loadPlaylists(force: Boolean = false, more: Boolean = false) {
+        if (playlistsFallback) {
+            loadFallbackPlaylists(force)
+            return
+        }
         val currentPage = page ?: return
         if (!force && (playlistsJob?.isActive == true || (!more && playlistsLoaded))) return
         if (more && (!state.value.hasMorePlaylists || playlistsSession == null)) return

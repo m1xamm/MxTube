@@ -694,12 +694,6 @@ private fun SearchChannelSection(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-        Text(
-            text = stringResource(R.string.search_channels),
-            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         channels.forEachIndexed { index, channel ->
             if (index > 0) Spacer(Modifier.height(2.dp))
             SearchChannelRow(

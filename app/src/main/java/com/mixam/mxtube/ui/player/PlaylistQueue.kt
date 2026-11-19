@@ -42,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -122,7 +123,7 @@ fun PlaylistBar(
                 .clip(RoundedCornerShape(24.dp))
                 .hazeBlur(input = HazeInput.Sources(hazeState), style = HazeMaterials.ultraThin()),
         shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.52f),
+        color = Color.Transparent,
     ) {
         Column {
             Row(

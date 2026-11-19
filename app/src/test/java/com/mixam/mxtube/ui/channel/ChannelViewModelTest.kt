@@ -61,8 +61,7 @@ class ChannelViewModelTest {
                     url,
                     store,
                     blockedStore(),
-                    searchChannelVideos = { found },
-                ) { page("Channel") },
+                    searchChannelVideos = { found }, searchChannelPlaylists = { emptyList() }) { page("Channel") },
             )
         val state = model.awaitState { it.header != null && !it.isLoadingVideos }
         assertEquals("Channel", state.header?.name)
@@ -83,7 +82,7 @@ class ChannelViewModelTest {
         val store = SubscriptionsStore(File(folder.root, "subscriptions.json"))
         val model =
             retain(
-                ChannelViewModel(url, store, blockedStore(), searchChannelVideos = { emptyList() }) { page("Channel") },
+                ChannelViewModel(url, store, blockedStore(), searchChannelVideos = { emptyList() }, searchChannelPlaylists = { emptyList() }) { page("Channel") },
             )
         model.awaitState { it.header != null && !it.isLoadingVideos }
         model.subscribe()
@@ -104,7 +103,7 @@ class ChannelViewModelTest {
         val inputUrl = "https://www.youtube.com/@channel"
         val model =
             retain(
-                ChannelViewModel(inputUrl, subscriptions, blocked, searchChannelVideos = { emptyList() }) { page("Channel") },
+                ChannelViewModel(inputUrl, subscriptions, blocked, searchChannelVideos = { emptyList() }, searchChannelPlaylists = { emptyList() }) { page("Channel") },
             )
         model.awaitState { it.header != null && !it.isLoadingVideos }
         model.subscribe()
@@ -123,7 +122,7 @@ class ChannelViewModelTest {
         val coldBlocked = BlockedChannelsStore(blockedFile)
         val coldModel =
             retain(
-                ChannelViewModel(inputUrl, subscriptions, coldBlocked, searchChannelVideos = { emptyList() }) { page("Channel") },
+                ChannelViewModel(inputUrl, subscriptions, coldBlocked, searchChannelVideos = { emptyList() }, searchChannelPlaylists = { emptyList() }) { page("Channel") },
             )
         val coldState = coldModel.awaitState { it.header != null && it.isBlocked && it.isSubscribed }
         assertTrue(coldState.isSubscribed)
@@ -141,7 +140,7 @@ class ChannelViewModelTest {
         val blocked = blockedStore()
         val model =
             retain(
-                ChannelViewModel(url, subscriptions, blocked, searchChannelVideos = { emptyList() }) { page("Channel") },
+                ChannelViewModel(url, subscriptions, blocked, searchChannelVideos = { emptyList() }, searchChannelPlaylists = { emptyList() }) { page("Channel") },
             )
         model.awaitState { it.header != null && !it.isLoadingVideos }
         assertTrue(File(folder.root, "blocked.json.tmp").mkdir())
@@ -157,7 +156,7 @@ class ChannelViewModelTest {
         var fails = true
         val model =
             retain(
-                ChannelViewModel(url, store, blockedStore(), searchChannelVideos = { emptyList() }) {
+                ChannelViewModel(url, store, blockedStore(), searchChannelVideos = { emptyList() }, searchChannelPlaylists = { emptyList() }) {
                     if (fails) throw IOException("Offline") else page("Recovered")
                 },
             )
@@ -175,7 +174,7 @@ class ChannelViewModelTest {
         val released = CompletableDeferred<Unit>()
         val cancelled = CompletableDeferred<Unit>()
         var calls = 0
-        val model = retain(ChannelViewModel(url, store, blockedStore(), searchChannelVideos = { emptyList() }) {
+        val model = retain(ChannelViewModel(url, store, blockedStore(), searchChannelVideos = { emptyList() }, searchChannelPlaylists = { emptyList() }) {
             calls++
             if (calls == 1) {
                 started.complete(Unit)
@@ -210,8 +209,7 @@ class ChannelViewModelTest {
                     ChannelTabs.PLAYLISTS -> playlists
                     else -> null
                 }
-            },
-        ) { page("Channel", ChannelTabs.VIDEOS, ChannelTabs.PLAYLISTS) })
+            }, searchChannelPlaylists = { emptyList() }) { page("Channel", ChannelTabs.VIDEOS, ChannelTabs.PLAYLISTS) })
         val state = model.awaitState { it.header != null && !it.isLoadingVideos && !it.isLoadingPlaylists }
         assertEquals(listOf(ChannelProfileTab.Home, ChannelProfileTab.Videos, ChannelProfileTab.Shorts, ChannelProfileTab.Lives, ChannelProfileTab.Playlists, ChannelProfileTab.Posts), state.availableTabs)
         assertEquals(1, state.videos.size)
@@ -242,7 +240,7 @@ class ChannelViewModelTest {
             ChannelTabBatch(videos = listOf(video("retryvideo1")), hasMore = true),
             listOf(ChannelTabBatch(videos = listOf(video("retryvideo2")), hasMore = false)),
         ).apply { failMore = true }
-        val model = retain(ChannelViewModel(url, store, blockedStore(), openTab = { _, _ -> videos }) { page("Channel", ChannelTabs.VIDEOS) })
+        val model = retain(ChannelViewModel(url, store, blockedStore(), openTab = { _, _ -> videos }, searchChannelPlaylists = { emptyList() }) { page("Channel", ChannelTabs.VIDEOS) })
         model.awaitState { it.header != null && !it.isLoadingVideos }
         model.selectTab(ChannelProfileTab.Videos)
         model.loadMore()
@@ -271,8 +269,7 @@ class ChannelViewModelTest {
             store,
             blockedStore(),
             openTab = { _, tab -> if (tab == ChannelTabs.VIDEOS) videos else playlists },
-            openPlaylistSource = { detail },
-        ) { page("Channel", ChannelTabs.VIDEOS, ChannelTabs.PLAYLISTS) })
+            openPlaylistSource = { detail }, searchChannelPlaylists = { emptyList() }) { page("Channel", ChannelTabs.VIDEOS, ChannelTabs.PLAYLISTS) })
         model.awaitState { it.header != null && !it.isLoadingVideos && !it.isLoadingPlaylists }
         model.openPlaylist(playlistItem)
         model.awaitState { it.selectedPlaylist == playlistItem && it.playlistVideos.size == 1 && !it.isLoadingPlaylist }
@@ -306,8 +303,7 @@ class ChannelViewModelTest {
             store,
             blockedStore(),
             openTab = { _, _ -> playlists },
-            openPlaylistSource = { detail },
-        ) { page("Channel", ChannelTabs.PLAYLISTS) })
+            openPlaylistSource = { detail }, searchChannelPlaylists = { emptyList() }) { page("Channel", ChannelTabs.PLAYLISTS) })
         model.awaitState { it.header != null && !it.isLoadingPlaylists }
         model.openPlaylist(playlistItem)
         model.awaitState { it.playlistVideos.size == 1 && !it.isLoadingPlaylist }
@@ -337,8 +333,7 @@ class ChannelViewModelTest {
             store,
             blockedStore(),
             openTab = { _, _ -> playlists },
-            openPlaylistSource = { if (it == first.url) stale else fresh },
-        ) { page("Channel", ChannelTabs.PLAYLISTS) })
+            openPlaylistSource = { if (it == first.url) stale else fresh }, searchChannelPlaylists = { emptyList() }) { page("Channel", ChannelTabs.PLAYLISTS) })
         model.awaitState { it.header != null && !it.isLoadingPlaylists }
         model.openPlaylist(first)
         started.await()
@@ -373,8 +368,7 @@ class ChannelViewModelTest {
             openTab = { _, _ ->
                 tabCalls++
                 if (tabCalls == 1) initial else latest
-            },
-        ) {
+            }, searchChannelPlaylists = { emptyList() }) {
             channelCalls++
             page(if (channelCalls == 1) "Channel" else "Latest", ChannelTabs.VIDEOS)
         })
@@ -406,8 +400,7 @@ class ChannelViewModelTest {
             url,
             store,
             blockedStore(),
-            openTab = { _, tab -> if (tab == ChannelTabs.VIDEOS) videos else playlists },
-        ) { page("Channel", ChannelTabs.VIDEOS, ChannelTabs.PLAYLISTS) })
+            openTab = { _, tab -> if (tab == ChannelTabs.VIDEOS) videos else playlists }, searchChannelPlaylists = { emptyList() }) { page("Channel", ChannelTabs.VIDEOS, ChannelTabs.PLAYLISTS) })
         model.awaitState { it.header != null && !it.isLoadingVideos && !it.isLoadingPlaylists }
         model.loadMore()
         val state = model.awaitState { it.videos.size == 1 && !it.isLoadingMore }

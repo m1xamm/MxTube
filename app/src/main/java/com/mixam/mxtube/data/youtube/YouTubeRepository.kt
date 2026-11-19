@@ -155,6 +155,27 @@ class YouTubeRepository(
         return found.distinctBy { it.url }
     }
 
+    suspend fun channelPlaylistsBySearch(header: ChannelHeader): List<PlaylistSummary> {
+        val key = ChannelIdentity.keyOf(header.url) ?: header.key
+        if (key.isBlank()) return emptyList()
+        val query = topicSearchQuery(header.name)
+        if (query.isBlank()) return emptyList()
+        val words = query.split(' ').filter { it.isNotBlank() }
+        val baseName =
+            if (words.size > 1) words.dropLast(1).joinToString(" ").ifBlank { query } else query
+        val terms = listOf(query, baseName).filter { it.isNotBlank() }.distinct()
+        for (term in terms) {
+            val session = search(term)
+            val found =
+                session.first().playlists.filter { playlist ->
+                    playlist.name.contains(baseName, ignoreCase = true) ||
+                        playlist.name.contains(query, ignoreCase = true)
+                }
+            if (found.isNotEmpty()) return found.take(10)
+        }
+        return emptyList()
+    }
+
     private fun topicSearchQuery(name: String): String =
         name
             .replace(Regex("(?i)\\s*[-–—]\\s*topic\\s*$"), "")
@@ -383,7 +404,12 @@ class YouTubeSearchSession internal constructor(
             extractor.fetchPage()
             val page = extractor.initialPage
             val next = if (page.hasNextPage()) page.nextPage else null
-            SearchBatch(videos = page.items.videos(), hasMore = next != null, channels = page.items.channels()) to next
+            SearchBatch(
+                videos = page.items.videos(),
+                hasMore = next != null,
+                channels = page.items.channels(),
+                playlists = page.items.playlists(),
+            ) to next
         }
         nextPage = next
         return batch
@@ -394,7 +420,12 @@ class YouTubeSearchSession internal constructor(
         val (batch, next) = withExtractorContext {
             val result = extractor.getPage(page)
             val next = if (result.hasNextPage()) result.nextPage else null
-            SearchBatch(videos = result.items.videos(), hasMore = next != null, channels = result.items.channels()) to next
+            SearchBatch(
+                videos = result.items.videos(),
+                hasMore = next != null,
+                channels = result.items.channels(),
+                playlists = result.items.playlists(),
+            ) to next
         }
         nextPage = next
         return batch
