@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.m1xamm.mxtube"
+    namespace = "com.mixam.mxtube"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.m1xamm.mxtube"
+        applicationId = "com.mixam.mxtube"
         minSdk = 26
         targetSdk = 37
         versionCode = 31
