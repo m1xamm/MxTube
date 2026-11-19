@@ -308,6 +308,7 @@ fun MxTubeApp(
                             }
                             openPlayer(video, related, null)
                         },
+                        onChannelClick = openChannel,
                         onSearchActiveChange = { isSearchActive = it },
                     )
 

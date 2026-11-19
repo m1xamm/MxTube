@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.m1xamm.mxtube.data.local.LocalHistoryStore
 import com.m1xamm.mxtube.data.local.SearchHistoryEntry
+import com.m1xamm.mxtube.data.youtube.ChannelSummary
 import com.m1xamm.mxtube.data.youtube.VideoSummary
 import com.m1xamm.mxtube.data.youtube.YouTubeRepository
 import com.m1xamm.mxtube.data.youtube.YouTubeSearchSession
@@ -34,6 +35,7 @@ data class SearchUiState(
     val query: String = "",
     val phase: SearchPhase = SearchPhase.Idle,
     val videos: List<VideoSummary> = emptyList(),
+    val channels: List<ChannelSummary> = emptyList(),
     val hasMore: Boolean = false,
     val isLoadingMore: Boolean = false,
     val loadMoreError: Boolean = false,
@@ -90,8 +92,14 @@ class SearchViewModel(
                     _uiState.update {
                         it.copy(
                             query = trimmed,
-                            phase = if (batch.videos.isEmpty()) SearchPhase.Empty else SearchPhase.Results,
+                            phase =
+                                if (batch.videos.isEmpty() && batch.channels.isEmpty()) {
+                                    SearchPhase.Empty
+                                } else {
+                                    SearchPhase.Results
+                                },
                             videos = batch.videos,
+                            channels = batch.channels.distinctBy { channel -> channel.url },
                             hasMore = batch.hasMore,
                         )
                     }

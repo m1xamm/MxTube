@@ -174,4 +174,5 @@
     <string name="playlist_queue_end">Конец плейлиста</string>
     <string name="playlist_shuffle">Перемешать</string>
     <string name="playlist_loop">Повтор</string>
+    <string name="search_channels">Каналы</string>
 </resources>

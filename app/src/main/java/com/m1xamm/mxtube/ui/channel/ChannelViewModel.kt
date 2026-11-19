@@ -71,6 +71,9 @@ class ChannelViewModel internal constructor(
     private val openPlaylistSource: (String) -> ChannelContentSession = {
         YouTubeRepository().playlist(it).asChannelContent()
     },
+    private val searchChannelVideos: suspend (ChannelHeader) -> List<VideoSummary> = { header ->
+        YouTubeRepository().channelVideosByUploader(header)
+    },
     private val openChannel: suspend (String) -> ChannelPage,
 ) : ViewModel() {
     constructor(
@@ -84,6 +87,7 @@ class ChannelViewModel internal constructor(
         blockedChannels = blockedChannels,
         openPlaylistSource = { repository.playlist(it).asChannelContent() },
         openChannel = repository::channelPage,
+        searchChannelVideos = repository::channelVideosByUploader,
     )
 
     private val state = MutableStateFlow(ChannelUiState())
@@ -94,6 +98,7 @@ class ChannelViewModel internal constructor(
     private var playlistsSession: ChannelContentSession? = null
     private var playlistSession: ChannelContentSession? = null
     private var videosLoaded = false
+    private var videosFallback = false
     private var playlistsLoaded = false
     private var loadJob: Job? = null
     private var videosJob: Job? = null
@@ -136,6 +141,7 @@ class ChannelViewModel internal constructor(
         videosSession = null
         playlistsSession = null
         videosLoaded = false
+        videosFallback = false
         playlistsLoaded = false
         state.update {
             it.copy(
@@ -158,9 +164,12 @@ class ChannelViewModel internal constructor(
                 if (token != generation) return@launch
                 page = loaded
                 channelKey.value = loaded.header.key
+                val hasVideoTab = ChannelTabs.VIDEOS in loaded.availableTabs
+                videosFallback = !hasVideoTab
+                videosLoaded = false
                 val tabs = buildList {
                     add(ChannelProfileTab.Home)
-                    if (ChannelTabs.VIDEOS in loaded.availableTabs) add(ChannelProfileTab.Videos)
+                    add(ChannelProfileTab.Videos)
                     add(ChannelProfileTab.Shorts)
                     add(ChannelProfileTab.Lives)
                     if (ChannelTabs.PLAYLISTS in loaded.availableTabs) add(ChannelProfileTab.Playlists)
@@ -174,9 +183,9 @@ class ChannelViewModel internal constructor(
                         selectedTab = selected,
                         isLoading = false,
                         isRefreshing = false,
-                        videos = if (ChannelProfileTab.Videos in tabs) it.videos else emptyList(),
+                        videos = if (hasVideoTab) it.videos else emptyList(),
                         playlists = if (ChannelProfileTab.Playlists in tabs) it.playlists else emptyList(),
-                        isLoadingVideos = ChannelProfileTab.Videos in tabs && selected in listOf(ChannelProfileTab.Home, ChannelProfileTab.Videos),
+                        isLoadingVideos = selected in listOf(ChannelProfileTab.Home, ChannelProfileTab.Videos),
                         isLoadingPlaylists = ChannelProfileTab.Playlists in tabs && selected in listOf(ChannelProfileTab.Home, ChannelProfileTab.Playlists),
                     )
                 }
@@ -218,6 +227,10 @@ class ChannelViewModel internal constructor(
     }
 
     private fun loadVideos(force: Boolean = false, more: Boolean = false) {
+        if (videosFallback) {
+            loadFallbackVideos(force)
+            return
+        }
         val currentPage = page ?: return
         if (!force && (videosJob?.isActive == true || (!more && videosLoaded))) return
         if (more && (!state.value.hasMore || videosSession == null)) return
@@ -247,6 +260,33 @@ class ChannelViewModel internal constructor(
                 if (token != generation) return@launch
                 Log.e("MxTubeChannel", "channel videos failed: $channelUrl", error)
                 state.update { it.copy(isLoadingVideos = false, isLoadingMore = false, videosError = true) }
+            }
+        }
+    }
+
+    private fun loadFallbackVideos(force: Boolean = false) {
+        val currentPage = page ?: return
+        if (!force && (videosJob?.isActive == true || videosLoaded)) return
+        if (force) videosJob?.cancel()
+        val token = generation
+        state.update { it.copy(isLoadingVideos = true, videosError = false) }
+        videosJob = viewModelScope.launch {
+            try {
+                val found =
+                    runCatching { searchChannelVideos(currentPage.header) }
+                        .onFailure { Log.w("MxTubeChannel", "topic videos failed", it) }
+                        .getOrDefault(emptyList())
+                if (token != generation) return@launch
+                videosLoaded = true
+                state.update {
+                    it.copy(
+                        videos = found,
+                        isLoadingVideos = false,
+                        hasMore = false,
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             }
         }
     }

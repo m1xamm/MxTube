@@ -52,16 +52,28 @@ class ChannelViewModelTest {
     }
 
     @Test
-    fun loadsRealHeaderFieldsAndHandlesNoVideoTab() = runTest {
+    fun loadsRealHeaderFieldsAndFillsVideosFromSearchWhenTabMissing() = runTest {
         val store = SubscriptionsStore(File(folder.root, "subscriptions.json"))
-        val model = retain(ChannelViewModel(url, store, blockedStore()) { page("Channel") })
+        val found = listOf(video("topicvideo1"), video("topicvideo2"))
+        val model =
+            retain(
+                ChannelViewModel(
+                    url,
+                    store,
+                    blockedStore(),
+                    searchChannelVideos = { found },
+                ) { page("Channel") },
+            )
         val state = model.awaitState { it.header != null && !it.isLoadingVideos }
         assertEquals("Channel", state.header?.name)
         assertEquals(1200L, state.header?.subscriberCount)
-        assertEquals(listOf(ChannelProfileTab.Home, ChannelProfileTab.Shorts, ChannelProfileTab.Lives, ChannelProfileTab.Posts), state.availableTabs)
+        assertEquals(
+            listOf(ChannelProfileTab.Home, ChannelProfileTab.Videos, ChannelProfileTab.Shorts, ChannelProfileTab.Lives, ChannelProfileTab.Posts),
+            state.availableTabs,
+        )
+        assertEquals(listOf("topicvideo1", "topicvideo2"), state.videos.map(::videoId))
         model.selectTab(ChannelProfileTab.Videos)
-        assertEquals(ChannelProfileTab.Home, model.uiState.value.selectedTab)
-        assertTrue(state.videos.isEmpty())
+        assertEquals(ChannelProfileTab.Videos, model.uiState.value.selectedTab)
         assertFalse(state.hasMore)
         assertFalse(state.error)
     }
@@ -69,7 +81,10 @@ class ChannelViewModelTest {
     @Test
     fun subscriptionAndBellSettingsPersistAndUnsubscribeUpdatesProfile() = runTest {
         val store = SubscriptionsStore(File(folder.root, "subscriptions.json"))
-        val model = retain(ChannelViewModel(url, store, blockedStore()) { page("Channel") })
+        val model =
+            retain(
+                ChannelViewModel(url, store, blockedStore(), searchChannelVideos = { emptyList() }) { page("Channel") },
+            )
         model.awaitState { it.header != null && !it.isLoadingVideos }
         model.subscribe()
         model.awaitState { it.isSubscribed }
@@ -87,7 +102,10 @@ class ChannelViewModelTest {
         val blockedFile = File(folder.root, "blocked.json")
         val blocked = BlockedChannelsStore(blockedFile)
         val inputUrl = "https://www.youtube.com/@channel"
-        val model = retain(ChannelViewModel(inputUrl, subscriptions, blocked) { page("Channel") })
+        val model =
+            retain(
+                ChannelViewModel(inputUrl, subscriptions, blocked, searchChannelVideos = { emptyList() }) { page("Channel") },
+            )
         model.awaitState { it.header != null && !it.isLoadingVideos }
         model.subscribe()
         model.awaitState { it.isSubscribed }
@@ -103,7 +121,10 @@ class ChannelViewModelTest {
 
         models.clear()
         val coldBlocked = BlockedChannelsStore(blockedFile)
-        val coldModel = retain(ChannelViewModel(inputUrl, subscriptions, coldBlocked) { page("Channel") })
+        val coldModel =
+            retain(
+                ChannelViewModel(inputUrl, subscriptions, coldBlocked, searchChannelVideos = { emptyList() }) { page("Channel") },
+            )
         val coldState = coldModel.awaitState { it.header != null && it.isBlocked && it.isSubscribed }
         assertTrue(coldState.isSubscribed)
 
@@ -118,7 +139,10 @@ class ChannelViewModelTest {
     fun failedBlockReportsFailureAndKeepsState() = runTest {
         val subscriptions = SubscriptionsStore(File(folder.root, "subscriptions.json"))
         val blocked = blockedStore()
-        val model = retain(ChannelViewModel(url, subscriptions, blocked) { page("Channel") })
+        val model =
+            retain(
+                ChannelViewModel(url, subscriptions, blocked, searchChannelVideos = { emptyList() }) { page("Channel") },
+            )
         model.awaitState { it.header != null && !it.isLoadingVideos }
         assertTrue(File(folder.root, "blocked.json.tmp").mkdir())
 
@@ -131,7 +155,12 @@ class ChannelViewModelTest {
     fun failedMetadataCanBeRetried() = runTest {
         val store = SubscriptionsStore(File(folder.root, "subscriptions.json"))
         var fails = true
-        val model = retain(ChannelViewModel(url, store, blockedStore()) { if (fails) throw IOException("Offline") else page("Recovered") })
+        val model =
+            retain(
+                ChannelViewModel(url, store, blockedStore(), searchChannelVideos = { emptyList() }) {
+                    if (fails) throw IOException("Offline") else page("Recovered")
+                },
+            )
         model.awaitState { it.error }
         fails = false
         model.load()
@@ -146,7 +175,7 @@ class ChannelViewModelTest {
         val released = CompletableDeferred<Unit>()
         val cancelled = CompletableDeferred<Unit>()
         var calls = 0
-        val model = retain(ChannelViewModel(url, store, blockedStore()) {
+        val model = retain(ChannelViewModel(url, store, blockedStore(), searchChannelVideos = { emptyList() }) {
             calls++
             if (calls == 1) {
                 started.complete(Unit)

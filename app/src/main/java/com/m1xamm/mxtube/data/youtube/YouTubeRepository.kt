@@ -14,6 +14,7 @@ import org.schabi.newpipe.extractor.Page
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.StreamingService
 import org.schabi.newpipe.extractor.channel.ChannelExtractor
+import org.schabi.newpipe.extractor.channel.ChannelInfoItem
 import org.schabi.newpipe.extractor.channel.tabs.ChannelTabExtractor
 import org.schabi.newpipe.extractor.kiosk.KioskExtractor
 import org.schabi.newpipe.extractor.linkhandler.ListLinkHandler
@@ -34,6 +35,7 @@ class YouTubeRepository(
 ) {
     private companion object {
         const val LOG_TAG = "MxRepository"
+        const val TOPIC_SEARCH_PAGES = 3
     }
 
     fun search(query: String): YouTubeSearchSession =
@@ -131,6 +133,35 @@ class YouTubeRepository(
             extractor.fetchPage()
             extractor.relatedItems?.items?.videos().orEmpty()
         }
+
+    suspend fun channelVideosByUploader(header: ChannelHeader): List<VideoSummary> {
+        val key = ChannelIdentity.keyOf(header.url) ?: header.key
+        if (key.isBlank()) return emptyList()
+        val query = topicSearchQuery(header.name)
+        if (query.isBlank()) return emptyList()
+        val session = search(query)
+        val found = mutableListOf<VideoSummary>()
+        var batch = session.first()
+        var pages = 1
+        while (true) {
+            batch.videos.forEach { video ->
+                val uploaderKey = ChannelIdentity.keyOf(video.uploaderUrl)
+                if (uploaderKey != null && uploaderKey == key) found.add(video)
+            }
+            if (!batch.hasMore || pages >= TOPIC_SEARCH_PAGES) break
+            batch = session.loadMore()
+            pages++
+        }
+        return found.distinctBy { it.url }
+    }
+
+    private fun topicSearchQuery(name: String): String =
+        name
+            .replace(Regex("(?i)\\s*[-–—]\\s*topic\\s*$"), "")
+            .replace(Regex("(?i)\\s*[-–—]\\s*тема\\s*$"), "")
+            .trim()
+            .trimEnd('.', ',')
+            .trim()
 
     suspend fun resolve(url: String): PlaybackInfo {
         val fast =
@@ -352,7 +383,7 @@ class YouTubeSearchSession internal constructor(
             extractor.fetchPage()
             val page = extractor.initialPage
             val next = if (page.hasNextPage()) page.nextPage else null
-            SearchBatch(videos = page.videos(), hasMore = next != null) to next
+            SearchBatch(videos = page.items.videos(), hasMore = next != null, channels = page.items.channels()) to next
         }
         nextPage = next
         return batch
@@ -363,7 +394,7 @@ class YouTubeSearchSession internal constructor(
         val (batch, next) = withExtractorContext {
             val result = extractor.getPage(page)
             val next = if (result.hasNextPage()) result.nextPage else null
-            SearchBatch(videos = result.videos(), hasMore = next != null) to next
+            SearchBatch(videos = result.items.videos(), hasMore = next != null, channels = result.items.channels()) to next
         }
         nextPage = next
         return batch
@@ -499,6 +530,27 @@ internal fun List<InfoItem>.videos(): List<VideoSummary> =
                     ?: ViewCountCorrector.avatar(item.url),
             )
         }
+        .distinctBy { it.url }
+
+internal fun List<InfoItem>.channels(): List<ChannelSummary> =
+    filterIsInstance<ChannelInfoItem>()
+        .map { item ->
+            val channelId = ChannelIdentity.from(item.url)?.key
+            ChannelSummary(
+                url = item.url,
+                name = item.name.orEmpty(),
+                avatarUrl = item.thumbnails.bestUrl(),
+                subscriberCount =
+                    if (channelId != null) {
+                        ViewCountCorrector.correctSubscribers(channelId, item.subscriberCount)
+                    } else {
+                        item.subscriberCount
+                    },
+                description = item.description?.takeIf { it.isNotBlank() },
+                isVerified = runCatching { item.isVerified }.getOrDefault(false),
+            )
+        }
+        .filter { it.name.isNotBlank() && it.url.isNotBlank() }
         .distinctBy { it.url }
 
 internal fun List<InfoItem>.playlists(): List<PlaylistSummary> =

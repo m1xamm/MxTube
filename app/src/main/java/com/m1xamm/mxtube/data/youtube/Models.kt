@@ -15,6 +15,16 @@ data class VideoSummary(
 data class SearchBatch(
     val videos: List<VideoSummary>,
     val hasMore: Boolean,
+    val channels: List<ChannelSummary> = emptyList(),
+)
+
+data class ChannelSummary(
+    val url: String,
+    val name: String,
+    val avatarUrl: String?,
+    val subscriberCount: Long,
+    val description: String?,
+    val isVerified: Boolean,
 )
 
 data class PlaylistSummary(

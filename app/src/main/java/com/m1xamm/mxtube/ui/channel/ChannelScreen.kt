@@ -802,8 +802,8 @@ private fun LazyListScope.homeContent(
     onRetryVideos: () -> Unit,
     onRetryPlaylists: () -> Unit,
 ) {
-    if (state.isLoadingVideos || state.isLoadingPlaylists) {
-        item(key = "home_skeleton_space") { Spacer(Modifier.height(8.dp)) }
+    if ((state.isLoadingVideos || state.isLoadingPlaylists) && state.videos.isEmpty() && state.playlists.isEmpty()) {
+        item(key = "home_loading") { LoadingItem(compact = true) }
     }
     if (state.videosError && state.videos.isEmpty()) {
         item(key = "home_videos_error") { ErrorItem(stringResource(R.string.channel_videos_error), onRetryVideos) }
@@ -855,6 +855,9 @@ private fun LazyListScope.videosContent(
 ) {
     if (state.videosError && state.videos.isEmpty()) {
         item(key = "videos_error") { ErrorItem(stringResource(R.string.channel_videos_error), onRetry) }
+    }
+    if (state.isLoadingVideos && state.videos.isEmpty() && !state.videosError) {
+        item(key = "videos_loading") { LoadingItem(compact = true) }
     }
     itemsIndexed(state.videos, key = { _, video -> video.url }) { index, video ->
         VideoRow(

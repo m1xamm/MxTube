@@ -34,6 +34,7 @@ internal object ViewCountCorrector {
             !body.contains("\"compactVideoRenderer\"") &&
             !body.contains("\"gridVideoRenderer\"") &&
             !body.contains("\"lockupViewModel\"") &&
+            !body.contains("\"channelRenderer\"") &&
             !body.contains("\"channelMetadataRenderer\"")
         ) {
             return
@@ -153,6 +154,9 @@ internal object ViewCountCorrector {
                     if (key == "lockupViewModel") {
                         value.optJSONObject(key)?.let(::recordLockup)
                     }
+                    if (key == "channelRenderer") {
+                        value.optJSONObject(key)?.let(::recordChannelRow)
+                    }
                     walk(value.opt(key), depth + 1)
                 }
             }
@@ -196,6 +200,22 @@ internal object ViewCountCorrector {
                 val parsed = parseViewCount(text) ?: continue
                 counts.merge(id, parsed, ::maxOf)
                 return
+            }
+        }
+    }
+
+    private fun recordChannelRow(renderer: JSONObject) {
+        val id = renderer.optString("channelId")
+        if (!ChannelIdentity.isChannelId(id)) return
+        val subscriberText = textOf(renderer.optJSONObject("subscriberCountText"))
+        val withHandle = subscriberText?.startsWith("@") == true
+        if (withHandle) handles[id] = subscriberText.orEmpty()
+        val subscriberCountText =
+            if (withHandle) textOf(renderer.optJSONObject("videoCountText")) else subscriberText
+        subscriberCountText?.let(::parseViewCount)?.let { subscribers.merge(id, it, ::maxOf) }
+        if (!withHandle) {
+            textOf(renderer.optJSONObject("videoCountText"))?.let(::parseViewCount)?.let {
+                channelVideos[id] = it
             }
         }
     }

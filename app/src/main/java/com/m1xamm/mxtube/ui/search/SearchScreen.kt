@@ -60,6 +60,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -70,17 +71,22 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
 import com.m1xamm.mxtube.R
 import com.m1xamm.mxtube.data.home.HomeTopics
 import com.m1xamm.mxtube.data.local.SearchHistoryEntry
+import com.m1xamm.mxtube.data.youtube.ChannelSummary
 import com.m1xamm.mxtube.data.youtube.VideoSummary
 import com.m1xamm.mxtube.ui.common.BrandMark
+import com.m1xamm.mxtube.ui.common.ChannelAvatar
 import com.m1xamm.mxtube.ui.common.LocalMiniPlayerVisible
+import com.m1xamm.mxtube.ui.common.compactCount
 import com.m1xamm.mxtube.ui.common.clusterCardColor
 import com.m1xamm.mxtube.ui.common.clusterInnerColor
 import com.m1xamm.mxtube.ui.home.HomeFeed
@@ -94,6 +100,7 @@ fun SearchScreen(
     searchListState: LazyListState,
     homeListState: LazyListState,
     onVideoClick: (VideoSummary, Set<String>, String?, List<VideoSummary>) -> Unit,
+    onChannelClick: (String) -> Unit = {},
     onSearchActiveChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -187,6 +194,7 @@ fun SearchScreen(
                     viewModel.onQueryChange(query)
                     submitSearch(query)
                 },
+                onChannelClick = onChannelClick,
                 onRemoveHistory = viewModel::removeSearchHistory,
                 onClearSearchHistory = viewModel::clearSearchHistory,
                 onClearAllHistory = { showClearHistoryDialog = true },
@@ -228,6 +236,7 @@ private fun SearchContent(
     history: List<SearchHistoryEntry>,
     listState: LazyListState,
     onVideoClick: (VideoSummary) -> Unit,
+    onChannelClick: (String) -> Unit,
     onHistoryClick: (String) -> Unit,
     onRemoveHistory: (String) -> Unit,
     onClearSearchHistory: () -> Unit,
@@ -297,6 +306,7 @@ private fun SearchContent(
                 state = state,
                 listState = listState,
                 onVideoClick = onVideoClick,
+                onChannelClick = onChannelClick,
                 onLoadMoreRetry = onRetryLoadMore,
                 modifier = modifier,
             )
@@ -676,11 +686,107 @@ private fun SearchHeader(
     }
 }
 
+
+@Composable
+private fun SearchChannelSection(
+    channels: List<ChannelSummary>,
+    onChannelClick: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(R.string.search_channels),
+            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        channels.forEachIndexed { index, channel ->
+            if (index > 0) Spacer(Modifier.height(2.dp))
+            SearchChannelRow(
+                channel = channel,
+                onClick = { onChannelClick(channel.url) },
+                topCorner = if (index == 0) 28.dp else 4.dp,
+                bottomCorner = if (index == channels.lastIndex) 28.dp else 4.dp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SearchChannelRow(
+    channel: ChannelSummary,
+    onClick: () -> Unit,
+    topCorner: Dp,
+    bottomCorner: Dp,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape =
+            RoundedCornerShape(
+                topStart = topCorner,
+                topEnd = topCorner,
+                bottomStart = bottomCorner,
+                bottomEnd = bottomCorner,
+            ),
+        color = clusterCardColor(),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        tonalElevation = 1.dp,
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ChannelAvatar(
+                avatarUrl = channel.avatarUrl,
+                uploader = channel.name,
+                size = 52.dp,
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = channel.name,
+                        modifier = Modifier.weight(1f, fill = false),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (channel.isVerified) {
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            painter = painterResource(R.drawable.ic_verified_rounded),
+                            contentDescription = stringResource(R.string.channel_verified),
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                if (channel.subscriberCount > 0) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = stringResource(R.string.channel_subscribers, compactCount(channel.subscriberCount)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun VideoList(
     state: SearchUiState,
     listState: LazyListState,
     onVideoClick: (VideoSummary) -> Unit,
+    onChannelClick: (String) -> Unit,
     onLoadMoreRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -695,6 +801,15 @@ private fun VideoList(
         ),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
+        if (state.channels.isNotEmpty()) {
+            item(key = "search_channels") {
+                SearchChannelSection(
+                    channels = state.channels.take(3),
+                    onChannelClick = onChannelClick,
+                    modifier = Modifier.padding(bottom = 10.dp),
+                )
+            }
+        }
         itemsIndexed(
             items = state.videos,
             key = { _, video -> video.url },

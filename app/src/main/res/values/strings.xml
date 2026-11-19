@@ -172,4 +172,5 @@
     <string name="playlist_queue_end">End of playlist</string>
     <string name="playlist_shuffle">Shuffle</string>
     <string name="playlist_loop">Repeat</string>
+    <string name="search_channels">Channels</string>
 </resources>
