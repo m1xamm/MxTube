@@ -84,7 +84,8 @@ class HomeFeedRepository(
             val discoveryLists =
                 buildList {
                     kioskResults.forEach { (topic, result) ->
-                        result.getOrNull()?.videos?.take(12)?.let { videos ->
+                        val videos = result.getOrNull()?.videos
+                        if (!videos.isNullOrEmpty()) {
                             add(
                                 videos.map { video ->
                                     HomeFeedItem(
@@ -97,6 +98,15 @@ class HomeFeedRepository(
                                     )
                                 },
                             )
+                        } else {
+                            val invidiousVideos = InvidiousFallback.searchVideos(topic.label, limit = 12)
+                            if (invidiousVideos.isNotEmpty()) {
+                                add(
+                                    invidiousVideos.map { video ->
+                                        HomeFeedItem(video = video, topics = setOf(topic.id))
+                                    },
+                                )
+                            }
                         }
                     }
                     if (searchBatch.videos.isNotEmpty()) {
