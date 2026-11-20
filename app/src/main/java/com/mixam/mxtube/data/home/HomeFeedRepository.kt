@@ -114,7 +114,7 @@ class HomeFeedRepository(
                 }
             val discovery = interleave(discoveryLists)
             if (recent.isEmpty() && discovery.isEmpty() && related.values.all { it.isEmpty() }) {
-                error("Empty home feed")
+                throw IllegalStateException("Empty home feed")
             }
 
             val items = HomeFeedEngine.rankInitial(history, related, discovery, limit = 32)

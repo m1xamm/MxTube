@@ -32,6 +32,7 @@ data class HomeUiState(
     val items: List<HomeFeedItem> = emptyList(),
     val isLoading: Boolean = true,
     val error: Boolean = false,
+    val errorText: String? = null,
     val hasMore: Boolean = false,
     val isLoadingMore: Boolean = false,
     val loadMoreError: Boolean = false,
@@ -183,13 +184,13 @@ class HomeViewModel(
     fun refresh() {
         val topic = _uiState.value.selectedTopic
         cache.remove(topic.id)
-        _uiState.update { it.copy(isLoading = it.items.isEmpty(), error = false) }
+        _uiState.update { it.copy(isLoading = it.items.isEmpty(), error = false, errorText = null) }
         loadTopic(topic, latestHistory, force = true)
     }
 
     fun retry() {
         val topic = _uiState.value.selectedTopic
-        _uiState.update { it.copy(error = false, isLoading = true) }
+        _uiState.update { it.copy(error = false, errorText = null, isLoading = true) }
         loadTopic(topic, latestHistory, force = true)
     }
 
@@ -338,12 +339,13 @@ class HomeViewModel(
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
-                } catch (_: Exception) {
+                } catch (error: Exception) {
                     if (_uiState.value.selectedTopicId == topic.id) {
                         _uiState.update {
                             it.copy(
                                 isLoading = false,
                                 error = it.items.isEmpty(),
+                                errorText = error.message?.takeIf { message -> message.isNotBlank() },
                             )
                         }
                     }

@@ -73,7 +73,9 @@ fun HomeFeed(
                 state.error && state.items.isEmpty() ->
                     HomeMessage(
                         title = stringResource(R.string.home_error_title),
-                        message = stringResource(R.string.home_error_message),
+                        message =
+                            stringResource(R.string.home_error_message) +
+                                (state.errorText?.let { " ($it)" } ?: ""),
                         actionLabel = stringResource(R.string.retry),
                         onAction = onRetry,
                     )
