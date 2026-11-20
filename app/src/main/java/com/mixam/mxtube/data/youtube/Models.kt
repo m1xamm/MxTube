@@ -19,6 +19,14 @@ data class SearchBatch(
     val playlists: List<PlaylistSummary> = emptyList(),
 )
 
+interface SearchSession {
+    val hasMore: Boolean
+
+    suspend fun first(): SearchBatch
+
+    suspend fun loadMore(): SearchBatch
+}
+
 data class ChannelSummary(
     val url: String,
     val name: String,

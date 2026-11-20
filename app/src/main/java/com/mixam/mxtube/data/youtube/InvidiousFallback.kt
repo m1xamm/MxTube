@@ -290,6 +290,44 @@ internal object InvidiousFallback {
     private fun qualityLabel(height: Int, fps: Int): String =
         if (fps > 30) "${height}p$fps" else "${height}p"
 
+    suspend fun searchVideos(query: String, limit: Int = 24): List<VideoSummary> {
+        val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
+        for (instance in candidates()) {
+            val videos =
+                try {
+                    val body = get("$instance/api/v1/search?q=$encodedQuery&type=video")
+                    parseSearchItems(body)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.w(LOG_TAG, "search failed: $instance", error)
+                    continue
+                }
+            if (videos.isNotEmpty()) return videos.take(limit)
+        }
+        return emptyList()
+    }
+
+    private fun parseSearchItems(body: String): List<VideoSummary> {
+        val root = JSONArray(body)
+        val videos = mutableListOf<VideoSummary>()
+        for (index in 0 until root.length()) {
+            val item = root.optJSONObject(index) ?: continue
+            val id = item.optString("videoId").takeIf { it.isNotBlank() } ?: continue
+            videos +=
+                VideoSummary(
+                    url = "https://www.youtube.com/watch?v=$id",
+                    title = item.optString("title").takeIf { it.isNotBlank() } ?: "MxTube",
+                    uploader = item.optString("author").ifBlank { "MxTube" },
+                    durationSeconds = item.optLong("lengthSeconds", 0L),
+                    viewCount = item.optLong("viewCount", -1L),
+                    uploadedAtEpochMillis = item.optLong("published").takeIf { it > 0 }?.times(1000L),
+                    thumbnailUrl = "https://i.ytimg.com/vi/$id/hqdefault.jpg",
+                )
+        }
+        return videos
+    }
+
     private fun defaultQualityIndex(qualities: List<PlaybackQuality>): Int {
         for (height in listOf(720, 1080, 480, 360)) {
             val index = qualities.indexOfFirst { it.height == height }

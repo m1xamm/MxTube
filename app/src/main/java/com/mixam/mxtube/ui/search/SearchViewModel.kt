@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.mixam.mxtube.data.local.LocalHistoryStore
 import com.mixam.mxtube.data.local.SearchHistoryEntry
 import com.mixam.mxtube.data.youtube.ChannelSummary
+import com.mixam.mxtube.data.youtube.SearchSession
 import com.mixam.mxtube.data.youtube.VideoSummary
 import com.mixam.mxtube.data.youtube.YouTubeRepository
 import com.mixam.mxtube.data.youtube.YouTubeSearchSession
@@ -54,7 +55,7 @@ class SearchViewModel(
             .map { it.searches }
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    private var session: YouTubeSearchSession? = null
+    private var session: SearchSession? = null
     private var lastQuery: String = ""
     private var searchJob: Job? = null
     private var loadMoreJob: Job? = null

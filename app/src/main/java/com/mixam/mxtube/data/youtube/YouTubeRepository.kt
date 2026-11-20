@@ -38,10 +38,50 @@ class YouTubeRepository(
         const val TOPIC_SEARCH_PAGES = 3
     }
 
-    fun search(query: String): YouTubeSearchSession =
-        YouTubeSearchSession(
-            ServiceList.YouTube.getSearchExtractor(query).withAppLocale(),
-        )
+    fun search(query: String): SearchSession =
+        runCatching { YouTubeSearchSession(ServiceList.YouTube.getSearchExtractor(query).withAppLocale()) }
+            .map { HybridSearchSession(it, query) }
+            .getOrElse { InvidiousSearchSession(query) }
+
+    private class InvidiousSearchSession(
+        private val query: String,
+    ) : SearchSession {
+        override val hasMore = false
+
+        override suspend fun first(): SearchBatch = SearchBatch(InvidiousFallback.searchVideos(query), false)
+
+        override suspend fun loadMore(): SearchBatch = SearchBatch(emptyList(), false)
+    }
+
+    private class HybridSearchSession(
+        private val newPipe: YouTubeSearchSession,
+        private val query: String,
+    ) : SearchSession {
+        private var invidious: SearchBatch? = null
+
+        override val hasMore: Boolean
+            get() = invidious == null && newPipe.hasMore
+
+        override suspend fun first(): SearchBatch {
+            return try {
+                val batch = newPipe.first()
+                if (batch.videos.isEmpty()) {
+                    val invidiousVideos = InvidiousFallback.searchVideos(query)
+                    if (invidiousVideos.isNotEmpty()) {
+                        SearchBatch(invidiousVideos, false)
+                    } else {
+                        batch
+                    }
+                } else {
+                    batch
+                }
+            } catch (error: Exception) {
+                SearchBatch(InvidiousFallback.searchVideos(query), false).also { invidious = it }
+            }
+        }
+
+        override suspend fun loadMore(): SearchBatch = invidious ?: newPipe.loadMore()
+    }
 
     fun kiosk(kioskId: String): YouTubeKioskSession =
         YouTubeKioskSession(
@@ -393,13 +433,13 @@ class YouTubeRepository(
 
 class YouTubeSearchSession internal constructor(
     private val extractor: SearchExtractor,
-) {
+) : SearchSession {
     private var nextPage: Page? = null
 
-    val hasMore: Boolean
+    override val hasMore: Boolean
         get() = nextPage != null
 
-    suspend fun first(): SearchBatch {
+    override suspend fun first(): SearchBatch {
         val (batch, next) = withExtractorContext {
             extractor.fetchPage()
             val page = extractor.initialPage
@@ -415,7 +455,7 @@ class YouTubeSearchSession internal constructor(
         return batch
     }
 
-    suspend fun loadMore(): SearchBatch {
+    override suspend fun loadMore(): SearchBatch {
         val page = nextPage ?: return SearchBatch(emptyList(), false)
         val (batch, next) = withExtractorContext {
             val result = extractor.getPage(page)

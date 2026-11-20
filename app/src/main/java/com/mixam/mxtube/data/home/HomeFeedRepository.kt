@@ -1,10 +1,11 @@
 package com.mixam.mxtube.data.home
 
 import com.mixam.mxtube.data.local.HistoryState
+import com.mixam.mxtube.data.youtube.InvidiousFallback
 import com.mixam.mxtube.data.youtube.SearchBatch
+import com.mixam.mxtube.data.youtube.SearchSession
 import com.mixam.mxtube.data.youtube.VideoSummary
 import com.mixam.mxtube.data.youtube.YouTubeRepository
-import com.mixam.mxtube.data.youtube.YouTubeSearchSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -112,7 +113,18 @@ class HomeFeedRepository(
                         )
                     }
                 }
-            val discovery = interleave(discoveryLists)
+            val invidiousItems =
+                if (interleave(discoveryLists).isEmpty() &&
+                    recent.isEmpty() &&
+                    related.values.all { it.isEmpty() }
+                ) {
+                    InvidiousFallback.searchVideos(HomeTopics.discoveryQuery, limit = 12).map { video ->
+                        HomeFeedItem(video = video, topics = setOf("invidious"))
+                    }
+                } else {
+                    emptyList()
+                }
+            val discovery = interleave(discoveryLists + listOf(invidiousItems))
             if (recent.isEmpty() && discovery.isEmpty() && related.values.all { it.isEmpty() }) {
                 throw IllegalStateException("Empty home feed")
             }
@@ -171,7 +183,7 @@ class HomeFeedRepository(
         }
 
     private class AllHomeFeedSession(
-        private val discoverySession: YouTubeSearchSession?,
+        private val discoverySession: SearchSession?,
         override val initialItems: List<HomeFeedItem>,
         initialHasMore: Boolean,
         private val backlog: MutableList<HomeFeedItem>,
