@@ -286,7 +286,8 @@ fun PlayerScreen(
     var relatedOverlayOpen by rememberSaveable { mutableStateOf(false) }
     var hasEnteredFullscreen by remember { mutableStateOf(isFullscreen) }
     var ended by remember { mutableStateOf(false) }
-    var controlsVisible by remember { mutableStateOf(true) }
+    val fromMini = remember { bridgeFrame != null }
+    var controlsVisible by remember { mutableStateOf(!fromMini) }
     var isPlaying by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(false) }
     var durationMs by remember { mutableLongStateOf(0L) }
@@ -299,10 +300,11 @@ fun PlayerScreen(
     }
     var settingsOpen by remember { mutableStateOf(false) }
     var playbackError by remember { mutableStateOf(false) }
+    var chromeReady by remember { mutableStateOf(false) }
     var reloadToken by remember { mutableIntStateOf(0) }
     var coverVisible by remember { mutableStateOf(true) }
     var playlistExpanded by remember { mutableStateOf(false) }
-    var detailsVisible by remember { mutableStateOf(morphTo == null) }
+    var detailsVisible by remember { mutableStateOf(morphTo == null && !fromMini) }
     val detailsAlpha by
         animateFloatAsState(
             targetValue = if (detailsVisible) 1f else 0f,
@@ -320,6 +322,18 @@ fun PlayerScreen(
         )
     LaunchedEffect(video.url) {
         coverVisible = true
+    }
+    LaunchedEffect(Unit) {
+        delay(if (fromMini || hazeWarmed) 260L else 2400L)
+        chromeReady = true
+        hazeWarmed = true
+    }
+    LaunchedEffect(Unit) {
+        if (fromMini) {
+            delay(160)
+            controlsVisible = true
+            detailsVisible = true
+        }
     }
     val closeMorphLanded = rememberUpdatedState(onMorphLanded)
     val videoView = remember { mutableStateOf<View?>(null) }
@@ -341,7 +355,7 @@ fun PlayerScreen(
         with(LocalDensity.current) {
             WindowInsets.statusBars.asPaddingValues().calculateTopPadding().toPx()
         }
-    val chromeVisible = controlsVisible && morphTo == null
+    val chromeVisible = controlsVisible && chromeReady && morphTo == null
 
     val handleBack: () -> Unit = {
         if (subscriptionMenuOpen) {
@@ -1125,7 +1139,7 @@ private fun PlayerStage(
                 model = coverUrl,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().hazeSource(hazeState),
             )
         }
 
@@ -2056,6 +2070,7 @@ private fun PlayerDetails(
 
 }
 
+private var hazeWarmed = false
 private const val MAX_PORTRAIT_RELATED = 30
 private const val AUTOPLAY_SECONDS = 8
 
