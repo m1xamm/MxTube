@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -24,7 +25,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -67,6 +70,7 @@ fun HomeVideoCard(
 
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
+    val titleLines = remember(video.url) { mutableStateOf(2) }
     val animatedTopCorner by
         animateDpAsState(
             targetValue = if (pressed) 28.dp else topCorner,
@@ -109,37 +113,40 @@ fun HomeVideoCard(
                     .fillMaxWidth()
                     .padding(8.dp),
         ) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(16f / 9f)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(placeholderColor)
-                        .heroImage(video.url),
-            ) {
-                AsyncImage(
-                    model = video.thumbnailUrl,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    placeholder = placeholder,
-                    error = placeholder,
-                    contentScale = ContentScale.Crop,
-                )
-                if (duration.isNotBlank()) {
-                    Text(
-                        text = duration,
-                        modifier =
-                            Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(8.dp)
-                                .clip(RoundedCornerShape(7.dp))
-                                .background(Color.Black.copy(alpha = 0.72f))
-                                .padding(horizontal = 6.dp, vertical = 2.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White,
-                        maxLines = 1,
+            BoxWithConstraints {
+                val coverHeight = maxWidth * 9f / 16f + 45.dp * (2 - titleLines.value)
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(coverHeight)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(placeholderColor)
+                            .heroImage(video.url),
+                ) {
+                    AsyncImage(
+                        model = video.thumbnailUrl,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        placeholder = placeholder,
+                        error = placeholder,
+                        contentScale = ContentScale.Crop,
                     )
+                    if (duration.isNotBlank()) {
+                        Text(
+                            text = duration,
+                            modifier =
+                                Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(8.dp)
+                                    .clip(RoundedCornerShape(7.dp))
+                                    .background(Color.Black.copy(alpha = 0.72f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White,
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
 
@@ -152,6 +159,7 @@ fun HomeVideoCard(
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+                onTextLayout = { result -> titleLines.value = result.lineCount.coerceIn(1, 2) },
             )
 
             Spacer(Modifier.height(8.dp))

@@ -52,8 +52,8 @@ class HomeFeedRepository(
 
     private suspend fun openPersonalized(history: HistoryState): HomeFeedSession =
         coroutineScope {
-            val recent = history.watches.take(5)
-            val kioskTopics = HomeTopics.base.filter { it.kioskId != null }
+            val recent = history.watches.take(3)
+            val kioskTopics = HomeTopics.base.filter { it.kioskId != null }.take(2)
             val discoverySearch = runCatching { youtube.search(HomeTopics.discoveryQuery) }.getOrNull()
 
             val searchDeferred =
@@ -63,7 +63,7 @@ class HomeFeedRepository(
                     async {
                         topic to
                             runCatching {
-                                youtube.kiosk(topic.kioskId!!).first()
+                                youtube.kiosk(topic.kioskId!!, topic.label).first()
                             }
                     }
                 }
@@ -84,13 +84,7 @@ class HomeFeedRepository(
             val discoveryLists =
                 buildList {
                     kioskResults.forEach { (topic, result) ->
-                        val invidiousVideos = InvidiousFallback.searchVideos(topic.label, limit = 12)
-                        val videos =
-                            if (invidiousVideos.isNotEmpty()) {
-                                invidiousVideos
-                            } else {
-                                result.getOrNull()?.videos.orEmpty()
-                            }
+                        val videos = result.getOrNull()?.videos.orEmpty()
                         if (videos.isNotEmpty()) {
                             add(
                                 videos.map { video ->
@@ -152,7 +146,7 @@ class HomeFeedRepository(
 
     private suspend fun openKiosk(topic: HomeTopic): HomeFeedSession {
         val kioskId = topic.kioskId ?: error("Kiosk id is missing")
-        val session = youtube.kiosk(kioskId)
+        val session = youtube.kiosk(kioskId, topic.label)
         val batch = session.first()
         val items = topicItems(batch, topic)
         return PagedHomeFeedSession(

@@ -7,6 +7,7 @@ import com.mixam.mxtube.data.local.BlockedChannelsStore
 import com.mixam.mxtube.data.local.SubscriptionNotificationMode
 import com.mixam.mxtube.data.local.SubscriptionsStore
 import com.mixam.mxtube.data.youtube.ChannelHeader
+import com.mixam.mxtube.data.youtube.FastContentResolver
 import com.mixam.mxtube.data.youtube.InvidiousFallback
 import com.mixam.mxtube.data.youtube.ChannelIdentity
 import com.mixam.mxtube.data.youtube.ChannelPage
@@ -48,6 +49,21 @@ private class InvidiousPlaylistsSession(
     override suspend fun loadMore() = ChannelTabBatch(emptyList(), emptyList(), false)
 }
 
+private fun playlistId(url: String): String? =
+    Regex("""[?&]list=([A-Za-z0-9_-]+)""").find(url)?.groupValues?.getOrNull(1)
+
+private class FastPlaylistSession(private val url: String) : ChannelContentSession {
+    override suspend fun first(): ChannelTabBatch {
+        val id = playlistId(url)
+        val videos = if (id != null) runCatching { FastContentResolver.playlistVideos(id) }.getOrDefault(emptyList()) else emptyList()
+        if (videos.isNotEmpty()) return ChannelTabBatch(videos, emptyList(), false)
+        return YouTubeRepository().playlist(url).asChannelContent().first()
+    }
+
+    override suspend fun loadMore(): ChannelTabBatch =
+        YouTubeRepository().playlist(url).asChannelContent().loadMore()
+}
+
 data class ChannelUiState(
     val header: ChannelHeader? = null,
     val availableTabs: List<ChannelProfileTab> = listOf(ChannelProfileTab.Home),
@@ -61,6 +77,7 @@ data class ChannelUiState(
     val hasMore: Boolean = false,
     val isLoadingMore: Boolean = false,
     val playlists: List<PlaylistSummary> = emptyList(),
+    val musicChannel: Boolean = false,
     val isLoadingPlaylists: Boolean = false,
     val playlistsError: Boolean = false,
     val hasMorePlaylists: Boolean = false,
@@ -83,9 +100,14 @@ class ChannelViewModel internal constructor(
     private val openTab: suspend (ChannelPage, String) -> ChannelContentSession? = { page, tab ->
         when (tab) {
             ChannelTabs.VIDEOS -> {
-                val invidVideos = InvidiousFallback.channelVideos(page.header.key)
-                if (invidVideos.isNotEmpty()) InvidiousVideosSession(invidVideos)
-                else page.tab(tab)?.asChannelContent()
+                val searched = YouTubeRepository().channelVideosByUploader(page.header)
+                if (searched.isNotEmpty()) {
+                    InvidiousVideosSession(searched)
+                } else {
+                    val invidVideos = InvidiousFallback.channelVideos(page.header.key)
+                    if (invidVideos.isNotEmpty()) InvidiousVideosSession(invidVideos)
+                    else page.tab(tab)?.asChannelContent()
+                }
             }
             ChannelTabs.PLAYLISTS -> {
                 val invidPlaylists = InvidiousFallback.channelPlaylists(page.header.key)
@@ -95,8 +117,8 @@ class ChannelViewModel internal constructor(
             else -> page.tab(tab)?.asChannelContent()
         }
     },
-    private val openPlaylistSource: (String) -> ChannelContentSession = {
-        YouTubeRepository().playlist(it).asChannelContent()
+    private val openPlaylistSource: (String) -> ChannelContentSession = { url ->
+        FastPlaylistSession(url)
     },
     private val searchChannelVideos: suspend (ChannelHeader) -> List<VideoSummary> = { header ->
         YouTubeRepository().channelVideosByUploader(header)
@@ -115,10 +137,12 @@ class ChannelViewModel internal constructor(
         channelUrl = channelUrl,
         subscriptions = subscriptions,
         blockedChannels = blockedChannels,
-        openPlaylistSource = { repository.playlist(it).asChannelContent() },
+        openPlaylistSource = { url -> FastPlaylistSession(url) },
         openChannel = { url ->
-            InvidiousFallback.channelPage(url)
-                ?: throw IllegalStateException("channel not found: $url")
+            val id = ChannelIdentity.keyOf(url).orEmpty()
+            FastContentResolver.channel(id)
+                ?: InvidiousFallback.channelPage(url)
+                ?: repository.channelPage(url)
         },
         searchChannelVideos = repository::channelVideosByUploader,
         searchChannelPlaylists = repository::channelPlaylistsBySearch,
@@ -184,6 +208,7 @@ class ChannelViewModel internal constructor(
                 isLoading = it.header == null,
                 isRefreshing = it.header != null,
                 error = false,
+                musicChannel = false,
                 isLoadingVideos = true,
                 videosError = false,
                 hasMore = false,
@@ -312,10 +337,15 @@ class ChannelViewModel internal constructor(
         state.update { it.copy(isLoadingVideos = true, videosError = false) }
         videosJob = viewModelScope.launch {
             try {
+                val fast = runCatching { FastContentResolver.channelVideos(currentPage.header.key) }.getOrDefault(emptyList())
                 val found =
-                    runCatching { searchChannelVideos(currentPage.header) }
-                        .onFailure { Log.w("MxTubeChannel", "topic videos failed", it) }
-                        .getOrDefault(emptyList())
+                    if (fast.isNotEmpty()) {
+                        fast
+                    } else {
+                        runCatching { searchChannelVideos(currentPage.header) }
+                            .onFailure { Log.w("MxTubeChannel", "topic videos failed", it) }
+                            .getOrDefault(emptyList())
+                    }
                 if (token != generation) return@launch
                 videosLoaded = true
                 state.update {
@@ -339,10 +369,15 @@ class ChannelViewModel internal constructor(
         state.update { it.copy(isLoadingPlaylists = true) }
         playlistsJob = viewModelScope.launch {
             try {
+                val albums = runCatching { FastContentResolver.albums(currentPage.header.key) }.getOrDefault(emptyList())
                 val found =
-                    runCatching { searchChannelPlaylists(currentPage.header) }
-                        .onFailure { Log.w("MxTubeChannel", "topic playlists failed", it) }
-                        .getOrDefault(emptyList())
+                    if (albums.isNotEmpty()) {
+                        albums
+                    } else {
+                        runCatching { searchChannelPlaylists(currentPage.header) }
+                            .onFailure { Log.w("MxTubeChannel", "topic playlists failed", it) }
+                            .getOrDefault(emptyList())
+                    }
                 if (token != generation) return@launch
                 playlistsLoaded = true
                 state.update {
@@ -357,6 +392,7 @@ class ChannelViewModel internal constructor(
                     it.copy(
                         availableTabs = tabs,
                         playlists = found,
+                        musicChannel = albums.isNotEmpty(),
                         isLoadingPlaylists = false,
                         selectedTab = it.selectedTab.takeIf(tabs::contains) ?: it.selectedTab,
                     )

@@ -54,6 +54,14 @@
     <string name="undo">Отменить</string>
     <string name="channel_home">Главная</string>
     <string name="channel_playlists">Плейлисты</string>
+    <string name="channel_albums_and_singles">Альбомы и синглы</string>
+    <string name="channel_album">Альбом</string>
+    <plurals name="channel_track_count">
+        <item quantity="one">%1$s трек</item>
+        <item quantity="few">%1$s трека</item>
+        <item quantity="many">%1$s треков</item>
+        <item quantity="other">%1$s трека</item>
+    </plurals>
     <string name="channel_show_all">Все</string>
     <string name="channel_more">Ещё</string>
     <string name="channel_share">Поделиться</string>

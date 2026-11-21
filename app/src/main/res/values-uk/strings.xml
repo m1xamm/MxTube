@@ -54,6 +54,14 @@
     <string name="undo">Скасувати</string>
     <string name="channel_home">Головна</string>
     <string name="channel_playlists">Плейлисти</string>
+    <string name="channel_albums_and_singles">Альбоми та сингли</string>
+    <string name="channel_album">Альбом</string>
+    <plurals name="channel_track_count">
+        <item quantity="one">%1$s трек</item>
+        <item quantity="few">%1$s трека</item>
+        <item quantity="many">%1$s треків</item>
+        <item quantity="other">%1$s трека</item>
+    </plurals>
     <string name="channel_show_all">Усі</string>
     <string name="channel_more">Ще</string>
     <string name="channel_share">Поділитися</string>

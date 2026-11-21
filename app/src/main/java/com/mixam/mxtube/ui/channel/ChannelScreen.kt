@@ -94,6 +94,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
@@ -830,16 +831,31 @@ private fun LazyListScope.homeContent(
     }
     if (state.playlists.isNotEmpty()) {
         item(key = "home_playlists_title") {
-            SectionTitle(stringResource(R.string.channel_playlists), showAll = ChannelProfileTab.Playlists in state.availableTabs) { onSelectTab(ChannelProfileTab.Playlists) }
+            SectionTitle(
+                stringResource(if (state.musicChannel) R.string.channel_albums_and_singles else R.string.channel_playlists),
+                showAll = ChannelProfileTab.Playlists in state.availableTabs,
+            ) { onSelectTab(ChannelProfileTab.Playlists) }
         }
-        val playlists = state.playlists.take(4)
-        itemsIndexed(playlists, key = { _, playlist -> "home_${playlist.url}" }) { index, playlist ->
-            PlaylistRow(
-                playlist,
-                topCorner = if (index == 0) 28.dp else 4.dp,
-                bottomCorner = if (index == playlists.lastIndex) 28.dp else 4.dp,
-                modifier = Modifier.padding(horizontal = 16.dp),
-            ) { onOpenPlaylist(playlist) }
+        if (state.musicChannel) {
+            val albums = state.playlists.take(6)
+            itemsIndexed(albums, key = { _, album -> "home_${album.url}" }) { index, album ->
+                AlbumCard(
+                    album = album,
+                    topCorner = if (index == 0) 28.dp else 4.dp,
+                    bottomCorner = if (index == albums.lastIndex) 28.dp else 4.dp,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                ) { onOpenPlaylist(album) }
+            }
+        } else {
+            val playlists = state.playlists.take(4)
+            itemsIndexed(playlists, key = { _, playlist -> "home_${playlist.url}" }) { index, playlist ->
+                PlaylistRow(
+                    playlist,
+                    topCorner = if (index == 0) 28.dp else 4.dp,
+                    bottomCorner = if (index == playlists.lastIndex) 28.dp else 4.dp,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                ) { onOpenPlaylist(playlist) }
+            }
         }
     }
     if (!state.isLoadingVideos && !state.isLoadingPlaylists && !state.videosError && !state.playlistsError && state.videos.isEmpty() && state.playlists.isEmpty()) {
@@ -888,12 +904,21 @@ private fun LazyListScope.playlistsContent(
         item(key = "playlists_error") { ErrorItem(stringResource(R.string.channel_playlists_error), onRetry) }
     }
     itemsIndexed(state.playlists, key = { _, playlist -> playlist.url }) { index, playlist ->
-        PlaylistRow(
-            playlist = playlist,
-            topCorner = if (index == 0) 28.dp else 4.dp,
-            bottomCorner = if (index == state.playlists.lastIndex) 28.dp else 4.dp,
-            modifier = Modifier.padding(horizontal = 16.dp),
-        ) { onOpenPlaylist(playlist) }
+        if (state.musicChannel) {
+            AlbumCard(
+                album = playlist,
+                topCorner = if (index == 0) 28.dp else 4.dp,
+                bottomCorner = if (index == state.playlists.lastIndex) 28.dp else 4.dp,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            ) { onOpenPlaylist(playlist) }
+        } else {
+            PlaylistRow(
+                playlist = playlist,
+                topCorner = if (index == 0) 28.dp else 4.dp,
+                bottomCorner = if (index == state.playlists.lastIndex) 28.dp else 4.dp,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            ) { onOpenPlaylist(playlist) }
+        }
     }
     if (!state.isLoadingPlaylists && !state.playlistsError && state.playlists.isEmpty()) {
         item(key = "playlists_empty") { EmptyItem(stringResource(R.string.channel_playlists_empty)) }
@@ -994,7 +1019,7 @@ private fun PlaylistDetailList(
                     }
                     Text(
                         buildString {
-                            append(stringResource(R.string.playlist_label))
+                            append(stringResource(if (state.musicChannel) R.string.channel_album else R.string.playlist_label))
                             if (playlist.videoCount >= 0) {
                                 append(" • ")
                                 append(
@@ -1092,6 +1117,8 @@ private fun OverviewCard(video: VideoSummary, startCorner: Dp, endCorner: Dp, on
     ).joinToString(" • ")
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
+    val titleLines = remember(video.url) { mutableStateOf(2) }
+    val coverHeight = (114 - titleLines.value * 20).dp
     val animatedStartCorner by
         animateDpAsState(
             targetValue = if (pressed) 28.dp else startCorner,
@@ -1115,13 +1142,13 @@ private fun OverviewCard(video: VideoSummary, startCorner: Dp, endCorner: Dp, on
     Surface(
         onClick = onClick,
         interactionSource = interactionSource,
-        modifier = Modifier.width(160.dp),
+        modifier = Modifier.width(160.dp).height(158.dp),
         shape = RoundedCornerShape(topStart = animatedStartCorner, bottomStart = animatedStartCorner, topEnd = animatedEndCorner, bottomEnd = animatedEndCorner),
         color = cardColor,
         tonalElevation = 1.dp,
     ) {
-        Column(Modifier.padding(8.dp)) {
-            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(16.dp)).background(clusterInnerColor()).heroImage(video.url)) {
+        Column(Modifier.padding(8.dp).fillMaxSize(), verticalArrangement = Arrangement.Top) {
+            Box(Modifier.fillMaxWidth().height(coverHeight).clip(RoundedCornerShape(16.dp)).background(clusterInnerColor()).heroImage(video.url)) {
                 AsyncImage(video.thumbnailUrl, contentDescription = video.title, contentScale = ContentScale.Crop, placeholder = placeholder, error = placeholder, modifier = Modifier.fillMaxSize())
                 if (duration.isNotBlank()) {
                     Text(
@@ -1136,9 +1163,9 @@ private fun OverviewCard(video: VideoSummary, startCorner: Dp, endCorner: Dp, on
             Text(
                 text = video.title,
                 style = MaterialTheme.typography.titleSmall,
-                minLines = 2,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+                onTextLayout = { result -> titleLines.value = result.lineCount.coerceIn(1, 2) },
             )
             Spacer(Modifier.height(4.dp))
             Text(
@@ -1146,6 +1173,72 @@ private fun OverviewCard(video: VideoSummary, startCorner: Dp, endCorner: Dp, on
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AlbumCard(
+    album: PlaylistSummary,
+    topCorner: Dp,
+    bottomCorner: Dp,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val placeholder = ColorPainter(clusterInnerColor())
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val animatedTopCorner by
+        animateDpAsState(
+            targetValue = if (pressed) 28.dp else topCorner,
+            animationSpec =
+                spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            label = "album-top-corner",
+        )
+    val animatedBottomCorner by
+        animateDpAsState(
+            targetValue = if (pressed) 28.dp else bottomCorner,
+            animationSpec =
+                spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            label = "album-bottom-corner",
+        )
+    Surface(
+        onClick = onClick,
+        interactionSource = interactionSource,
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(topStart = animatedTopCorner, topEnd = animatedTopCorner, bottomStart = animatedBottomCorner, bottomEnd = animatedBottomCorner),
+        color = clusterCardColor(),
+        tonalElevation = 1.dp,
+    ) {
+        Column(Modifier.padding(8.dp)) {
+            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(16.dp)).background(clusterInnerColor())) {
+                AsyncImage(album.thumbnailUrl, contentDescription = album.name, contentScale = ContentScale.Crop, placeholder = placeholder, error = placeholder, modifier = Modifier.fillMaxSize())
+                if (album.videoCount > 0) {
+                    Text(
+                        text = pluralStringResource(R.plurals.channel_track_count, album.videoCount.toInt(), compactCount(album.videoCount)),
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp).background(Color.Black.copy(alpha = 0.76f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.White,
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(album.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(2.dp))
+            val uploader = album.uploader.orEmpty()
+            Text(
+                text = listOfNotNull(uploader.takeIf { it.isNotBlank() }, stringResource(R.string.channel_album)).joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }

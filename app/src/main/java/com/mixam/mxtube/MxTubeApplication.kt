@@ -7,6 +7,7 @@ import coil3.SingletonImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import com.mixam.mxtube.data.home.HomeTopics
 import com.mixam.mxtube.data.local.BlockedChannelsStore
+import com.mixam.mxtube.data.local.DataMigration
 import com.mixam.mxtube.data.local.HomeFeedCache
 import com.mixam.mxtube.data.local.LocalHistoryStore
 import com.mixam.mxtube.data.local.SubscriptionsFeedCache
@@ -38,6 +39,7 @@ class MxTubeApplication : Application(), SingletonImageLoader.Factory {
     override fun onCreate() {
         super.onCreate()
 
+        DataMigration.importOnce(this)
         AppLocale.init(this)
         HomeTopics.init(this)
         UserPreferences.init(this)

@@ -37,3 +37,4 @@ plugins {
 
 rootProject.name = "MxTube"
 include(":app")
+include(":bridge")

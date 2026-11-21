@@ -7,6 +7,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <queries>
+        <provider android:authorities="com.m1xamm.mxtube.migration" />
+    </queries>
+
     <application
         android:name=".MxTubeApplication"
         android:allowBackup="true"

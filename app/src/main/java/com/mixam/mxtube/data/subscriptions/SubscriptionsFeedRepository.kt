@@ -1,7 +1,10 @@
 package com.mixam.mxtube.data.subscriptions
 
 import com.mixam.mxtube.data.local.SubscriptionEntry
+import com.mixam.mxtube.data.youtube.ChannelHeader
+import com.mixam.mxtube.data.youtube.ChannelIdentity
 import com.mixam.mxtube.data.youtube.ChannelTabBatch
+import com.mixam.mxtube.data.youtube.InvidiousFallback
 import com.mixam.mxtube.data.youtube.VideoSummary
 import com.mixam.mxtube.data.youtube.YouTubeRepository
 import kotlinx.coroutines.CancellationException
@@ -18,6 +21,18 @@ import java.io.IOException
 
 internal const val MAX_SUBSCRIPTIONS_FEED_VIDEOS = 300
 private const val PER_CHANNEL_FALLBACK = 8
+
+private fun List<VideoSummary>.withUploader(
+    entry: SubscriptionEntry,
+    name: String,
+): List<VideoSummary> =
+    map { video ->
+        video.copy(
+            uploader = video.uploader.ifBlank { name },
+            uploaderAvatarUrl = video.uploaderAvatarUrl ?: entry.avatarUrl,
+            uploaderUrl = video.uploaderUrl?.takeIf { it.isNotBlank() } ?: entry.url,
+        )
+    }
 
 internal fun mergeSubscriptionsVideos(
     videos: Iterable<List<VideoSummary>>,
@@ -91,19 +106,51 @@ class SubscriptionsFeedRepository internal constructor(
 ) {
     constructor(youtube: YouTubeRepository = YouTubeRepository()) : this(
         openChannel = { entry ->
-            val page = youtube.channelPage(entry.url)
-            val tab = page.tab(ChannelTabs.VIDEOS)
-            object : SubscriptionChannelSession {
-                override suspend fun first(): ChannelTabBatch =
-                    (tab?.first() ?: ChannelTabBatch(hasMore = false)).withUploader()
+            val key = ChannelIdentity.keyOf(entry.url) ?: entry.key
+            val invidious = InvidiousFallback.channelVideos(key)
+            if (invidious.isNotEmpty()) {
+                object : SubscriptionChannelSession {
+                    override suspend fun first(): ChannelTabBatch =
+                        ChannelTabBatch(videos = invidious.withUploader(entry, entry.name), hasMore = false)
 
-                override suspend fun loadMore(): ChannelTabBatch =
-                    (tab?.loadMore() ?: ChannelTabBatch(hasMore = false)).withUploader()
+                    override suspend fun loadMore(): ChannelTabBatch =
+                        ChannelTabBatch(hasMore = false)
+                }
+            } else {
+                val searched =
+                    youtube.channelVideosByUploader(
+                        ChannelHeader(
+                            key = key,
+                            url = entry.url,
+                            name = entry.name,
+                            avatarUrl = entry.avatarUrl,
+                            bannerUrl = null,
+                            subscriberCount = -1L,
+                            description = "",
+                        ),
+                    )
+                if (searched.isNotEmpty()) {
+                    object : SubscriptionChannelSession {
+                        override suspend fun first(): ChannelTabBatch =
+                            ChannelTabBatch(videos = searched.withUploader(entry, entry.name), hasMore = false)
 
-                private fun ChannelTabBatch.withUploader(): ChannelTabBatch =
-                    copy(videos = videos.map { video ->
-                        video.copy(uploader = video.uploader.ifBlank { page.header.name.ifBlank { entry.name } })
-                    })
+                        override suspend fun loadMore(): ChannelTabBatch =
+                            ChannelTabBatch(hasMore = false)
+                    }
+                } else {
+                    val page = youtube.channelPage(entry.url)
+                    val tab = page.tab(ChannelTabs.VIDEOS)
+                    object : SubscriptionChannelSession {
+                        override suspend fun first(): ChannelTabBatch =
+                            (tab?.first() ?: ChannelTabBatch(hasMore = false)).withUploader()
+
+                        override suspend fun loadMore(): ChannelTabBatch =
+                            (tab?.loadMore() ?: ChannelTabBatch(hasMore = false)).withUploader()
+
+                        private fun ChannelTabBatch.withUploader(): ChannelTabBatch =
+                            copy(videos = videos.withUploader(entry, page.header.name.ifBlank { entry.name }))
+                    }
+                }
             }
         },
     )

@@ -54,6 +54,12 @@
     <string name="undo">Undo</string>
     <string name="channel_home">Home</string>
     <string name="channel_playlists">Playlists</string>
+    <string name="channel_albums_and_singles">Albums and singles</string>
+    <string name="channel_album">Album</string>
+    <plurals name="channel_track_count">
+        <item quantity="one">%1$s track</item>
+        <item quantity="other">%1$s tracks</item>
+    </plurals>
     <string name="channel_show_all">Show all</string>
     <string name="channel_more">More</string>
     <string name="channel_share">Share</string>

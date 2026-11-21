@@ -53,19 +53,21 @@ class YouTubeRepository(
             get() = newPipe?.hasMore == true && invidiousVideos == null
 
         override suspend fun first(): SearchBatch {
+            val fast = runCatching { FastContentResolver.search(query) }.getOrNull().orEmpty()
+            val fastPlaylists = runCatching { FastContentResolver.searchPlaylists(query) }.getOrNull().orEmpty()
+            if (fast.isNotEmpty() || fastPlaylists.isNotEmpty()) {
+                invidiousVideos = fast
+                return SearchBatch(fast, false, playlists = fastPlaylists)
+            }
             val invidious = InvidiousFallback.searchVideos(query)
             if (invidious.isNotEmpty()) {
                 invidiousVideos = invidious
                 return SearchBatch(invidious, false)
             }
             newPipe?.let {
-                return try {
-                    it.first()
-                } catch (error: Exception) {
-                    SearchBatch(InvidiousFallback.searchVideos(query), false)
-                }
+                return runCatching { it.first() }.getOrDefault(SearchBatch(emptyList(), false))
             }
-            return SearchBatch(invidious, false)
+            return SearchBatch(emptyList(), false)
         }
 
         override suspend fun loadMore(): SearchBatch =
@@ -77,6 +79,51 @@ class YouTubeRepository(
         YouTubeKioskSession(
             ServiceList.YouTube.kioskList.getExtractorById(kioskId, null).withAppLocale(),
         )
+
+    fun kiosk(kioskId: String, label: String): SearchSession = HybridKioskSession(kioskId, label)
+
+    private class HybridKioskSession(
+        private val kioskId: String,
+        private val label: String,
+    ) : SearchSession {
+        private val newPipe: YouTubeKioskSession? =
+            runCatching {
+                YouTubeKioskSession(
+                    ServiceList.YouTube.kioskList.getExtractorById(kioskId, null).withAppLocale(),
+                )
+            }.getOrNull()
+        private var fromInvidious = false
+
+        override val hasMore: Boolean
+            get() = !fromInvidious && newPipe?.hasMore == true
+
+        override suspend fun first(): SearchBatch {
+            val fast = runCatching { FastContentResolver.search(label, 24) }.getOrNull().orEmpty()
+            if (fast.isNotEmpty()) {
+                fromInvidious = true
+                return SearchBatch(fast, false)
+            }
+            val trending = InvidiousFallback.kiosk(kioskId)
+            if (trending.isNotEmpty()) {
+                fromInvidious = true
+                return SearchBatch(trending, false)
+            }
+            val search = InvidiousFallback.searchVideos(label, 24)
+            if (search.isNotEmpty()) {
+                fromInvidious = true
+                return SearchBatch(search, false)
+            }
+            return newPipe?.let { runCatching { it.first() }.getOrNull() }
+                ?: SearchBatch(emptyList(), false)
+        }
+
+        override suspend fun loadMore(): SearchBatch =
+            if (fromInvidious) {
+                SearchBatch(emptyList(), false)
+            } else {
+                newPipe?.loadMore() ?: SearchBatch(emptyList(), false)
+            }
+    }
 
     fun playlist(url: String): YouTubePlaylistSession =
         YouTubePlaylistSession(ServiceList.YouTube.getPlaylistExtractor(url).withAppLocale())

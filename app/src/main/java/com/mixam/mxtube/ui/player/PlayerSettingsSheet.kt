@@ -162,6 +162,12 @@ fun PlayerSettingsOverlay(
         }
     }
 
+    var canDismiss by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(300)
+        canDismiss = true
+    }
+
     BoxWithConstraints(
         modifier =
             Modifier
@@ -176,6 +182,7 @@ fun PlayerSettingsOverlay(
                     .fillMaxSize()
                     .background(scrimColor)
                     .clickable(
+                        enabled = canDismiss,
                         interactionSource = scrimInteraction,
                         indication = null,
                         onClick = onDismiss,

@@ -261,6 +261,27 @@ class PlayerViewModel(
                 }
                 _uiState.update { state ->
                     val info = state.info ?: return@update state
+                    val audioTracks =
+                        if (info.audioTracks.size <= 1 && full.audioTracks.size > 1) {
+                            full.audioTracks
+                        } else {
+                            info.audioTracks
+                        }
+                    val current = info.audioTracks.getOrNull(state.selectedAudioTrackIndex)
+                    val audioIndex =
+                        UserPreferences.audioLabel
+                            ?.let { label -> audioTracks.indexOfFirst { it.label == label } }
+                            ?.takeIf { it >= 0 }
+                            ?: current
+                                ?.let { track ->
+                                    audioTracks.indexOfFirst {
+                                        it.id == track.id || it.languageTag == track.languageTag
+                                    }
+                                }
+                                ?.takeIf { it >= 0 }
+                            ?: audioTracks.indexOfFirst { it.isOriginal }.let {
+                                if (it >= 0) it else 0
+                            }
                     state.copy(
                         info =
                             info.copy(
@@ -271,7 +292,13 @@ class PlayerViewModel(
                                 viewCount = info.viewCount.takeIf { it > 0 } ?: full.viewCount,
                                 subtitles = info.subtitles.ifEmpty { full.subtitles },
                                 uploaderUrl = info.uploaderUrl ?: full.uploaderUrl,
+                                audioTracks = audioTracks,
+                                defaultAudioTrackIndex =
+                                    audioTracks.indexOfFirst { it.isOriginal }.let {
+                                        if (it >= 0) it else 0
+                                    },
                             ),
+                        selectedAudioTrackIndex = audioIndex,
                         related = merged,
                         hasMoreRelated = canLoadMoreRelated(merged),
                     )

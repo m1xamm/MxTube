@@ -1,6 +1,7 @@
 package com.mixam.mxtube.data.youtube
 
 import android.util.Log
+import com.mixam.mxtube.AppLocale
 import com.mixam.mxtube.data.network.Http
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -11,6 +12,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 internal object FastStreamResolver {
@@ -69,7 +71,7 @@ internal object FastStreamResolver {
         val formats =
             root.optJSONObject("streamingData")?.optJSONArray("adaptiveFormats") ?: return null
         val details = root.optJSONObject("videoDetails")
-        val audio = bestAudio(formats, audioLabel)
+        val audio = audioTracks(formats, audioLabel)
         val videoQualities = videoQualities(formats)
         val qualities = videoQualities.ifEmpty { muxedQualities(formats) }
         if (qualities.isEmpty()) return null
@@ -84,8 +86,9 @@ internal object FastStreamResolver {
             durationSeconds = details?.optString("lengthSeconds")?.toLongOrNull() ?: 0L,
             qualities = qualities,
             defaultQualityIndex = defaultQualityIndex(qualities),
-            audioTracks = audio?.let { listOf(it) }.orEmpty(),
-            defaultAudioTrackIndex = if (audio == null) -1 else 0,
+            audioTracks = audio,
+            defaultAudioTrackIndex =
+                if (audio.isEmpty()) -1 else audio.indexOfFirst { it.isOriginal }.let { if (it >= 0) it else 0 },
             subtitles = subtitles(root.optJSONObject("captions")),
             related = emptyList(),
             uploaderUrl =
@@ -96,31 +99,61 @@ internal object FastStreamResolver {
         )
     }
 
-    private fun bestAudio(formats: JSONArray, label: String): PlaybackAudioTrack? {
-        var best: JSONObject? = null
-        var bestScore = -1.0
+    private fun audioTracks(formats: JSONArray, fallbackLabel: String): List<PlaybackAudioTrack> {
+        val grouped = LinkedHashMap<String, MutableList<JSONObject>>()
         for (index in 0 until formats.length()) {
             val format = formats.optJSONObject(index) ?: continue
             val mime = format.optString("mimeType").substringBefore(';')
             if (!mime.startsWith("audio/")) continue
             if (format.optString("url").isBlank()) continue
-            val score =
-                format.optLong("bitrate", 0L).toDouble() +
-                    if (mime.contains("mp4")) 1_000_000.0 else 0.0
-            if (score > bestScore) {
-                best = format
-                bestScore = score
-            }
+            val track = format.optJSONObject("audioTrack")
+            val id =
+                track?.optString("audioTrackId").takeUnless { it.isNullOrBlank() }
+                    ?: listOf(
+                        track?.optString("audioLocale").orEmpty(),
+                        track?.optString("audioTrackName").orEmpty(),
+                        track?.optString("audioTrackType").orEmpty(),
+                    ).joinToString("|")
+            grouped.getOrPut(id) { mutableListOf() }.add(format)
         }
-        val format = best ?: return null
-        return PlaybackAudioTrack(
-            id = "fast",
-            label = label,
-            languageTag = null,
-            isOriginal = true,
-            url = format.optString("url"),
-            mimeType = format.optString("mimeType").substringBefore(';').ifBlank { "audio/mp4" },
-        )
+        val tracks =
+            grouped.mapNotNull { (_, list) ->
+                val format =
+                    list.maxWithOrNull(
+                        compareBy<JSONObject> { it.optLong("bitrate", 0L) }
+                            .thenBy { it.optString("mimeType").contains("mp4", ignoreCase = true) },
+                    ) ?: return@mapNotNull null
+                val track = format.optJSONObject("audioTrack")
+                val language = track?.optString("audioLocale").takeUnless { it.isNullOrBlank() }
+                val name = track?.optString("audioTrackName").takeUnless { it.isNullOrBlank() }
+                val type = track?.optString("audioTrackType").orEmpty()
+                val label =
+                    localizedLabel(language, name)
+                        ?: fallbackLabel.takeIf { grouped.size == 1 }
+                        ?: name
+                        ?: language
+                        ?: fallbackLabel
+                PlaybackAudioTrack(
+                    id = track?.optString("audioTrackId")?.takeIf { it.isNotBlank() } ?: language.orEmpty(),
+                    label = label,
+                    languageTag = language?.takeIf { it.isNotBlank() },
+                    isOriginal =
+                        type.equals("ORIGINAL", ignoreCase = true) ||
+                            (grouped.size == 1 && type.isBlank()),
+                    url = format.optString("url"),
+                    mimeType = format.optString("mimeType").substringBefore(';').ifBlank { "audio/mp4" },
+                )
+            }
+        val original = tracks.firstOrNull { it.isOriginal }
+        return if (original == null) tracks else listOf(original) + tracks.filter { it !== original }
+    }
+
+    private fun localizedLabel(language: String?, name: String?): String? {
+        if (!name.isNullOrBlank()) return name
+        val tag = language?.takeIf { it.isNotBlank() } ?: return null
+        return runCatching { Locale.forLanguageTag(tag).getDisplayLanguage(AppLocale.locale) }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() && !it.equals(tag, ignoreCase = true) }
     }
 
     private fun videoQualities(formats: JSONArray): List<PlaybackQuality> {
