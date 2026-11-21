@@ -324,15 +324,15 @@ fun PlayerScreen(
         coverVisible = true
     }
     LaunchedEffect(Unit) {
-        delay(if (fromMini || hazeWarmed) 260L else 2400L)
-        chromeReady = true
-        hazeWarmed = true
-    }
-    LaunchedEffect(Unit) {
         if (fromMini) {
-            delay(160)
+            chromeReady = true
             controlsVisible = true
             detailsVisible = true
+            hazeWarmed = true
+        } else {
+            delay(if (hazeWarmed) 260L else 2400L)
+            chromeReady = true
+            hazeWarmed = true
         }
     }
     val closeMorphLanded = rememberUpdatedState(onMorphLanded)
