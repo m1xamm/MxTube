@@ -7,6 +7,7 @@ import com.mixam.mxtube.data.local.BlockedChannelsStore
 import com.mixam.mxtube.data.local.SubscriptionNotificationMode
 import com.mixam.mxtube.data.local.SubscriptionsStore
 import com.mixam.mxtube.data.youtube.ChannelHeader
+import com.mixam.mxtube.data.youtube.InvidiousFallback
 import com.mixam.mxtube.data.youtube.ChannelIdentity
 import com.mixam.mxtube.data.youtube.ChannelPage
 import com.mixam.mxtube.data.youtube.ChannelRef
@@ -31,6 +32,20 @@ enum class ChannelProfileTab { Home, Videos, Shorts, Lives, Playlists, Posts }
 internal interface ChannelContentSession {
     suspend fun first(): ChannelTabBatch
     suspend fun loadMore(): ChannelTabBatch
+}
+
+private class InvidiousVideosSession(
+    private val videos: List<VideoSummary>,
+) : ChannelContentSession {
+    override suspend fun first() = ChannelTabBatch(videos, emptyList(), false)
+    override suspend fun loadMore() = ChannelTabBatch(emptyList(), emptyList(), false)
+}
+
+private class InvidiousPlaylistsSession(
+    private val playlists: List<PlaylistSummary>,
+) : ChannelContentSession {
+    override suspend fun first() = ChannelTabBatch(emptyList(), playlists, false)
+    override suspend fun loadMore() = ChannelTabBatch(emptyList(), emptyList(), false)
 }
 
 data class ChannelUiState(
@@ -65,8 +80,20 @@ class ChannelViewModel internal constructor(
     private val channelUrl: String,
     private val subscriptions: SubscriptionsStore,
     private val blockedChannels: BlockedChannelsStore,
-    private val openTab: (ChannelPage, String) -> ChannelContentSession? = { page, tab ->
-        page.tab(tab)?.asChannelContent()
+    private val openTab: suspend (ChannelPage, String) -> ChannelContentSession? = { page, tab ->
+        when (tab) {
+            ChannelTabs.VIDEOS -> {
+                val invidVideos = InvidiousFallback.channelVideos(page.header.key)
+                if (invidVideos.isNotEmpty()) InvidiousVideosSession(invidVideos)
+                else page.tab(tab)?.asChannelContent()
+            }
+            ChannelTabs.PLAYLISTS -> {
+                val invidPlaylists = InvidiousFallback.channelPlaylists(page.header.key)
+                if (invidPlaylists.isNotEmpty()) InvidiousPlaylistsSession(invidPlaylists)
+                else page.tab(tab)?.asChannelContent()
+            }
+            else -> page.tab(tab)?.asChannelContent()
+        }
     },
     private val openPlaylistSource: (String) -> ChannelContentSession = {
         YouTubeRepository().playlist(it).asChannelContent()
@@ -89,7 +116,10 @@ class ChannelViewModel internal constructor(
         subscriptions = subscriptions,
         blockedChannels = blockedChannels,
         openPlaylistSource = { repository.playlist(it).asChannelContent() },
-        openChannel = repository::channelPage,
+        openChannel = { url ->
+            InvidiousFallback.channelPage(url)
+                ?: throw IllegalStateException("channel not found: $url")
+        },
         searchChannelVideos = repository::channelVideosByUploader,
         searchChannelPlaylists = repository::channelPlaylistsBySearch,
     )

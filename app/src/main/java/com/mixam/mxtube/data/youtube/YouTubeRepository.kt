@@ -38,49 +38,39 @@ class YouTubeRepository(
         const val TOPIC_SEARCH_PAGES = 3
     }
 
-    fun search(query: String): SearchSession =
-        runCatching { YouTubeSearchSession(ServiceList.YouTube.getSearchExtractor(query).withAppLocale()) }
-            .map { HybridSearchSession(it, query) }
-            .getOrElse { InvidiousSearchSession(query) }
-
-    private class InvidiousSearchSession(
-        private val query: String,
-    ) : SearchSession {
-        override val hasMore = false
-
-        override suspend fun first(): SearchBatch = SearchBatch(InvidiousFallback.searchVideos(query), false)
-
-        override suspend fun loadMore(): SearchBatch = SearchBatch(emptyList(), false)
-    }
+    fun search(query: String): SearchSession = HybridSearchSession(query)
 
     private class HybridSearchSession(
-        private val newPipe: YouTubeSearchSession,
         private val query: String,
     ) : SearchSession {
-        private var invidious: SearchBatch? = null
+        private val newPipe: YouTubeSearchSession? =
+            runCatching {
+                YouTubeSearchSession(ServiceList.YouTube.getSearchExtractor(query).withAppLocale())
+            }.getOrNull()
+        private var invidiousVideos: List<VideoSummary>? = null
 
         override val hasMore: Boolean
-            get() = invidious == null && newPipe.hasMore
+            get() = newPipe?.hasMore == true && invidiousVideos == null
 
         override suspend fun first(): SearchBatch {
-            return try {
-                val batch = newPipe.first()
-                if (batch.videos.isEmpty()) {
-                    val invidiousVideos = InvidiousFallback.searchVideos(query)
-                    if (invidiousVideos.isNotEmpty()) {
-                        SearchBatch(invidiousVideos, false)
-                    } else {
-                        batch
-                    }
-                } else {
-                    batch
-                }
-            } catch (error: Exception) {
-                SearchBatch(InvidiousFallback.searchVideos(query), false).also { invidious = it }
+            val invidious = InvidiousFallback.searchVideos(query)
+            if (invidious.isNotEmpty()) {
+                invidiousVideos = invidious
+                return SearchBatch(invidious, false)
             }
+            newPipe?.let {
+                return try {
+                    it.first()
+                } catch (error: Exception) {
+                    SearchBatch(InvidiousFallback.searchVideos(query), false)
+                }
+            }
+            return SearchBatch(invidious, false)
         }
 
-        override suspend fun loadMore(): SearchBatch = invidious ?: newPipe.loadMore()
+        override suspend fun loadMore(): SearchBatch =
+            invidiousVideos?.let { SearchBatch(emptyList(), false) }
+                ?: newPipe?.loadMore() ?: SearchBatch(emptyList(), false)
     }
 
     fun kiosk(kioskId: String): YouTubeKioskSession =

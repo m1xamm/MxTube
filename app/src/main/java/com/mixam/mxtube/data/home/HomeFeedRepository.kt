@@ -71,7 +71,7 @@ class HomeFeedRepository(
                 recent.map { seed ->
                     async {
                         seed.url to
-                            runCatching { youtube.related(seed.url) }.getOrDefault(emptyList())
+                            runCatching { runCatching { InvidiousFallback.relatedVideos(seed.url) }.getOrNull()?.takeIf { it.isNotEmpty() } ?: youtube.related(seed.url) }.getOrDefault(emptyList())
                     }
                 }
 
@@ -84,8 +84,14 @@ class HomeFeedRepository(
             val discoveryLists =
                 buildList {
                     kioskResults.forEach { (topic, result) ->
-                        val videos = result.getOrNull()?.videos
-                        if (!videos.isNullOrEmpty()) {
+                        val invidiousVideos = InvidiousFallback.searchVideos(topic.label, limit = 12)
+                        val videos =
+                            if (invidiousVideos.isNotEmpty()) {
+                                invidiousVideos
+                            } else {
+                                result.getOrNull()?.videos.orEmpty()
+                            }
+                        if (videos.isNotEmpty()) {
                             add(
                                 videos.map { video ->
                                     HomeFeedItem(
@@ -98,15 +104,6 @@ class HomeFeedRepository(
                                     )
                                 },
                             )
-                        } else {
-                            val invidiousVideos = InvidiousFallback.searchVideos(topic.label, limit = 12)
-                            if (invidiousVideos.isNotEmpty()) {
-                                add(
-                                    invidiousVideos.map { video ->
-                                        HomeFeedItem(video = video, topics = setOf(topic.id))
-                                    },
-                                )
-                            }
                         }
                     }
                     if (searchBatch.videos.isNotEmpty()) {

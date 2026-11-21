@@ -2,6 +2,7 @@ package com.mixam.mxtube.data.youtube
 
 import android.util.Log
 import com.mixam.mxtube.data.network.Http
+import org.schabi.newpipe.extractor.ServiceList
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -335,4 +336,128 @@ internal object InvidiousFallback {
         }
         return 0
     }
+
+    suspend fun channelPage(url: String): ChannelPage? {
+        val id = channelIdOf(url)
+        if (id.isBlank()) return null
+        var header: ChannelHeader? = null
+        for (instance in candidates()) {
+            try {
+                val body = get("$instance/api/v1/channels/$id?fields=name,avatarThumbnails,bannerUrl,subscriberCount,videoCount")
+                val root = JSONObject(body)
+                header = ChannelHeader(
+                    key = id,
+                    url = "https://www.youtube.com/channel/$id",
+                    name = root.optString("name"),
+                    avatarUrl = bestAvatar(root.optJSONArray("avatarThumbnails")),
+                    bannerUrl = root.optString("bannerUrl").takeIf { it.isNotBlank() },
+                    subscriberCount = root.optLong("subscriberCount", 0L),
+                    description = root.optString("description").takeIf { it.isNotBlank() } ?: "",
+                    videoCount = root.optLong("videoCount", -1L),
+                )
+                lastWorking = instance
+                break
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(LOG_TAG, "channel page failed: $instance", error)
+            }
+        }
+        return header?.let { ChannelPage(it, ServiceList.YouTube, emptyList()) }
+    }
+
+    suspend fun channelVideos(channelId: String): List<VideoSummary> {
+        for (instance in candidates()) {
+            try {
+                val body = get("$instance/api/v1/channels/$channelId/videos?fields=videoId,title,author,lengthSeconds,viewCount,published,authorId")
+                val videos = parseChannelVideos(body)
+                if (videos.isNotEmpty()) {
+                    lastWorking = instance
+                    return videos.take(50)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(LOG_TAG, "channel videos failed: $instance", error)
+            }
+        }
+        return emptyList()
+    }
+
+    suspend fun channelPlaylists(channelId: String): List<PlaylistSummary> {
+        for (instance in candidates()) {
+            try {
+                val body = get("$instance/api/v1/channels/$channelId/playlists?fields=playlistId,title,author,videoCount")
+                val root = JSONArray(body)
+                val playlists = mutableListOf<PlaylistSummary>()
+                for (index in 0 until root.length()) {
+                    val item = root.optJSONObject(index) ?: continue
+                    val id = item.optString("playlistId").ifBlank { item.optString("id") }.ifBlank { item.optString("uuid") }
+                    if (id.isBlank()) continue
+                    playlists += PlaylistSummary(
+                        url = "https://www.youtube.com/playlist?list=$id",
+                        name = item.optString("title"),
+                        videoCount = item.optLong("videoCount", 0L),
+                        thumbnailUrl = null,
+                        uploader = item.optString("author").takeIf { it.isNotBlank() },
+                    )
+                }
+                if (playlists.isNotEmpty()) {
+                    lastWorking = instance
+                    return playlists.take(20)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(LOG_TAG, "channel playlists failed: $instance", error)
+            }
+        }
+        return emptyList()
+    }
+
+    suspend fun relatedVideos(url: String): List<VideoSummary> {
+        val id = videoIdRegex.find(url)?.groupValues?.getOrNull(1) ?: return emptyList()
+        for (instance in candidates()) {
+            try {
+                val root = JSONObject(get("$instance/api/v1/videos/$id?local=true&fields=title,author,lengthSeconds,viewCount,published,recommendedVideos"))
+                val videos = related(root.optJSONArray("recommendedVideos")).take(8)
+                if (videos.isNotEmpty()) {
+                    lastWorking = instance
+                    return videos
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(LOG_TAG, "related failed: $instance", error)
+            }
+        }
+        return emptyList()
+    }
+
+    private fun parseChannelVideos(body: String): List<VideoSummary> {
+        val root = JSONArray(body)
+        val videos = mutableListOf<VideoSummary>()
+        for (index in 0 until root.length()) {
+            val item = root.optJSONObject(index) ?: continue
+            val id = item.optString("videoId").takeIf { it.isNotBlank() } ?: continue
+            videos += VideoSummary(
+                url = "https://www.youtube.com/watch?v=$id",
+                title = item.optString("title").takeIf { it.isNotBlank() } ?: "MxTube",
+                uploader = item.optString("author").ifBlank { "MxTube" },
+                durationSeconds = item.optLong("lengthSeconds", 0L),
+                viewCount = item.optLong("viewCount", -1L),
+                uploadedAtEpochMillis = item.optLong("published").takeIf { it > 0 }?.times(1000L),
+                thumbnailUrl = "https://i.ytimg.com/vi/$id/hqdefault.jpg",
+            )
+        }
+        return videos
+    }
+
+    private fun channelIdOf(url: String): String {
+        val direct = Regex("/channel/([A-Za-z0-9_-]{2,})").find(url)?.groupValues?.getOrNull(1)
+        if (direct != null) return direct
+        val handle = Regex("/@([A-Za-z0-9_-]+)").find(url)?.groupValues?.getOrNull(1)
+        return handle?.let { "@$it" } ?: ""
+    }
 }
+
