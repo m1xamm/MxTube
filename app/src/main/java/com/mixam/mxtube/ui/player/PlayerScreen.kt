@@ -218,7 +218,8 @@ fun PlayerScreen(
     onQueueSelect: (Int) -> Unit = {},
     onQueueShuffle: (Boolean) -> Unit = {},
     onQueueLoop: (Boolean) -> Unit = {},
-    onEnded: () -> Unit = {},
+    nextInQueue: VideoSummary? = null,
+    onQueueAdvance: () -> Unit = {},
     morphTo: Rect? = null,
     bridgeFrame: Bitmap? = null,
     onMorphLanded: (Bitmap?) -> Unit = {},
@@ -321,7 +322,6 @@ fun PlayerScreen(
         coverVisible = true
     }
     val closeMorphLanded = rememberUpdatedState(onMorphLanded)
-    val endedHandler = rememberUpdatedState(onEnded)
     val videoView = remember { mutableStateOf<View?>(null) }
     LaunchedEffect(morphTo) {
         if (morphTo != null) {
@@ -413,7 +413,6 @@ fun PlayerScreen(
                     if (playbackState == Player.STATE_ENDED) {
                         controlsVisible = true
                         ended = true
-                        endedHandler.value()
                     }
                 }
 
@@ -487,8 +486,12 @@ fun PlayerScreen(
 
     LaunchedEffect(ended, isFullscreen) {
         if (ended && isFullscreen) {
-            relatedOverlayOpen = true
-            controlsVisible = true
+            if (nextInQueue != null) {
+                onQueueAdvance()
+            } else {
+                relatedOverlayOpen = true
+                controlsVisible = true
+            }
         }
     }
 
@@ -720,8 +723,22 @@ fun PlayerScreen(
                                 speed = speed,
                                 ended = ended,
                                 endSuggestions =
-                                    state.related.filter { it.url != video.url }.take(4),
-                                onEndSuggestionClick = { next -> onRelatedClick(next) },
+                                    listOfNotNull(nextInQueue) +
+                                        state.related.filter {
+                                            it.url != video.url && it.url != nextInQueue?.url
+                                        }.take(2),
+                                onEndSuggestionClick = { next ->
+                                    if (next.url == nextInQueue?.url) onQueueAdvance()
+                                    else onRelatedClick(next)
+                                },
+                                onEndAutoAdvance = {
+                                    if (nextInQueue != null) {
+                                        onQueueAdvance()
+                                    } else {
+                                        state.related.firstOrNull { it.url != video.url }
+                                            ?.let { onRelatedClick(it) }
+                                    }
+                                },
                                 onReplay = {
                                     onSeek(0L)
                                     exoPlayer.play()
@@ -848,6 +865,7 @@ private fun PlayerStage(
     ended: Boolean = false,
     endSuggestions: List<VideoSummary> = emptyList(),
     onEndSuggestionClick: (VideoSummary) -> Unit = {},
+    onEndAutoAdvance: () -> Unit = {},
     onReplay: () -> Unit = {},
     bridgeFrame: Bitmap? = null,
     onVideoView: (View) -> Unit = {},
@@ -1094,6 +1112,7 @@ private fun PlayerStage(
                 suggestions = endSuggestions,
                 onReplay = onReplay,
                 onSuggestionClick = onEndSuggestionClick,
+                onAutoAdvance = onEndAutoAdvance,
             )
         }
 
@@ -1463,21 +1482,22 @@ private fun EndScreen(
     suggestions: List<VideoSummary>,
     onReplay: () -> Unit,
     onSuggestionClick: (VideoSummary) -> Unit,
+    onAutoAdvance: () -> Unit,
 ) {
     val items = suggestions.take(3)
     var autoplay by remember { mutableStateOf(items.isNotEmpty()) }
     var remaining by remember { mutableIntStateOf(AUTOPLAY_SECONDS) }
-    val currentSuggestionClick = rememberUpdatedState(onSuggestionClick)
+    val autoAdvanceHandler = rememberUpdatedState(onAutoAdvance)
 
     LaunchedEffect(items.firstOrNull()?.url, autoplay) {
-        val next = items.firstOrNull() ?: return@LaunchedEffect
+        if (items.isEmpty()) return@LaunchedEffect
         if (!autoplay) return@LaunchedEffect
         remaining = AUTOPLAY_SECONDS
         while (remaining > 0) {
             delay(1_000)
             remaining -= 1
         }
-        currentSuggestionClick.value(next)
+        autoAdvanceHandler.value()
     }
 
     Box(
@@ -1523,7 +1543,12 @@ private fun EndScreen(
                     }
                 }
             }
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = stringResource(R.string.player_up_next),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White,
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items.take(3).forEach { video ->
                         EndSuggestion(

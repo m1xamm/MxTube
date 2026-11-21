@@ -459,7 +459,8 @@ fun MxTubeApp(
                         onQueueSelect = { index -> playQueueIndex(index, null) },
                         onQueueShuffle = { enabled -> playlistQueue = playlistQueue?.withShuffle(enabled) },
                         onQueueLoop = { enabled -> playlistQueue = playlistQueue?.copy(loop = enabled) },
-                        onEnded = {
+                        nextInQueue = playlistQueue?.next()?.current,
+                        onQueueAdvance = {
                             val next = playlistQueue?.next()
                             if (next != null) playQueueIndex(next.index, next)
                         },

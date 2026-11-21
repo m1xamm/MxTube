@@ -94,6 +94,7 @@
     <string name="player_subtitles_empty">Для этого видео субтитров нет.</string>
     <string name="player_none">Нет</string>
     <string name="player_next_in">Далее · %1$d</string>
+    <string name="player_up_next">Следующее видео</string>
     <string name="player_replay">Повторить</string>
     <string name="player_related">Похожие видео</string>
     <string name="player_related_error">Не удалось загрузить ещё видео</string>
