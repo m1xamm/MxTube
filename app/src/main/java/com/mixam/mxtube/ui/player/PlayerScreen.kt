@@ -108,6 +108,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
+
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -735,43 +736,42 @@ fun PlayerScreen(
                                         .clip(RoundedCornerShape(20.dp)),
                             )
 
-                            if (playlistQueue != null) {
-                                PlaylistBar(
-                                    queue = playlistQueue,
-                                    expanded = playlistExpanded,
-                                    onToggleExpanded = { playlistExpanded = !playlistExpanded },
-                                    onSelect = onQueueSelect,
-                                    onShuffle = { onQueueShuffle(!playlistQueue.shuffled) },
-                                    onLoop = { onQueueLoop(!playlistQueue.loop) },
-                                    hazeState = hazeState,
-                                    modifier =
-                                        Modifier.graphicsLayer { alpha = detailsAlpha },
+                            Box(modifier = Modifier.weight(1f).graphicsLayer { alpha = detailsAlpha }) {
+                                PlayerDetails(
+                                    video = video,
+                                    info = info,
+                                    topPadding = if (playlistQueue != null) 92.dp else 16.dp,
+                                    related = state.related,
+                                    onRelatedClick = onRelatedClick,
+                                    isSubscribed = state.isSubscribed,
+                                    isSubscribePending = state.isSubscribePending,
+                                    notificationMode = state.notificationMode,
+                                    subscriptionError = state.subscriptionError,
+                                    onChannelClick = onChannelClick,
+                                    onSubscribe = {
+                                        viewModel.subscribe()
+                                        requestNotifications()
+                                    },
+                                    onManageSubscription = {
+                                        controlsVisible = false
+                                        subscriptionMenuOpen = true
+                                    },
+                                    modifier = Modifier.fillMaxSize().hazeSource(hazeState),
                                 )
-                            }
 
-                            PlayerDetails(
-                                video = video,
-                                info = info,
-                                related = state.related,
-                                onRelatedClick = onRelatedClick,
-                                isSubscribed = state.isSubscribed,
-                                isSubscribePending = state.isSubscribePending,
-                                notificationMode = state.notificationMode,
-                                subscriptionError = state.subscriptionError,
-                                onChannelClick = onChannelClick,
-                                onSubscribe = {
-                                    viewModel.subscribe()
-                                    requestNotifications()
-                                },
-                                onManageSubscription = {
-                                    controlsVisible = false
-                                    subscriptionMenuOpen = true
-                                },
-                                modifier =
-                                    Modifier
-                                        .weight(1f)
-                                        .graphicsLayer { alpha = detailsAlpha },
-                            )
+                                if (playlistQueue != null) {
+                                    PlaylistBar(
+                                        queue = playlistQueue,
+                                        expanded = playlistExpanded,
+                                        onToggleExpanded = { playlistExpanded = !playlistExpanded },
+                                        onSelect = onQueueSelect,
+                                        onShuffle = { onQueueShuffle(!playlistQueue.shuffled) },
+                                        onLoop = { onQueueLoop(!playlistQueue.loop) },
+                                        hazeState = hazeState,
+                                        modifier = Modifier.align(Alignment.TopCenter),
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -1938,6 +1938,7 @@ private fun FullscreenRelatedCard(
 private fun PlayerDetails(
     video: VideoSummary,
     info: PlaybackInfo,
+    topPadding: Dp = 16.dp,
     related: List<VideoSummary>,
     onRelatedClick: (VideoSummary) -> Unit,
     isSubscribed: Boolean,
@@ -1963,7 +1964,7 @@ private fun PlayerDetails(
             modifier
                 .fillMaxWidth()
                 .navigationBarsPadding(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = topPadding, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item(key = "player_details") {
