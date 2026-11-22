@@ -214,6 +214,7 @@ fun PlayerScreen(
     onWatchProgress: (Long) -> Unit = {},
     startFullscreen: Boolean = false,
     onFullscreenChanged: (Boolean) -> Unit = {},
+    enteredFromMini: Boolean = false,
     playlistQueue: PlaylistQueue? = null,
     onQueueSelect: (Int) -> Unit = {},
     onQueueShuffle: (Boolean) -> Unit = {},
@@ -286,7 +287,7 @@ fun PlayerScreen(
     var relatedOverlayOpen by rememberSaveable { mutableStateOf(false) }
     var hasEnteredFullscreen by remember { mutableStateOf(isFullscreen) }
     var ended by remember { mutableStateOf(false) }
-    val fromMini = remember { bridgeFrame != null }
+    val fromMini = remember { enteredFromMini || bridgeFrame != null }
     var controlsVisible by remember { mutableStateOf(!fromMini) }
     var isPlaying by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(false) }

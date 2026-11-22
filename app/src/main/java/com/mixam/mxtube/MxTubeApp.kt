@@ -130,7 +130,7 @@ fun MxTubeApp(
         )
     }
     val showNav = selectedVideo == null && selectedChannelUrl == null && !isSearchActive
-    val miniVisible = miniVideo != null && selectedVideo == null && !channelSheetOpen
+    val miniVisible = miniVideo != null && (selectedVideo == null || miniExpandTarget != null) && !channelSheetOpen
     val openChannel: (String) -> Unit = { url ->
         shownChannelUrl = url
         selectedChannelUrl = url
@@ -217,6 +217,9 @@ fun MxTubeApp(
             miniCollapseFrom = null
             pendingExpand = video
             miniExpandTarget = playerCover
+            playerEnterFade = false
+            shownVideo = video
+            selectedVideo = video
         }
     }
     val finishMiniExpand: (android.graphics.Bitmap?) -> Unit = { bitmap ->
@@ -454,6 +457,7 @@ fun MxTubeApp(
                         },
                         startFullscreen = playerFullscreen,
                         onFullscreenChanged = { playerFullscreen = it },
+                        enteredFromMini = miniExpandTarget != null,
                         playlistQueue = playlistQueue,
                         onQueueSelect = { index -> playQueueIndex(index, null) },
                         onQueueShuffle = { enabled -> playlistQueue = playlistQueue?.withShuffle(enabled) },

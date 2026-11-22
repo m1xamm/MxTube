@@ -273,6 +273,7 @@ fun MiniPlayer(
                     .size(width = WINDOW_WIDTH_DP.dp, height = (WINDOW_WIDTH_DP * WINDOW_ASPECT).dp)
                     .graphicsLayer {
                         val target = expandTarget
+                        alpha = if (target != null) 1f - expandProgress.value.coerceIn(0f, 1f) else 1f
                         if (target != null) {
                             val p = expandProgress.value.coerceIn(0f, 1f)
                             val current = position ?: Offset(bounds.value.maxX, bounds.value.maxY)
