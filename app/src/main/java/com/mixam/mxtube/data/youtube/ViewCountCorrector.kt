@@ -18,6 +18,12 @@ internal object ViewCountCorrector {
     private val videosLabel = Regex("videos?|видео|відео", RegexOption.IGNORE_CASE)
     private val videoIdRegex = Regex("""(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})""")
     private val numberRegex = Regex("""(\d[\d \u00A0\u202F]*(?:[.,]\d+)?)""")
+    private val dateRegex =
+        Regex(
+            "назад|ago|нед|тиж|мес|год|years?|months?|weeks?|days?|hours?|mins?|" +
+                "день|дней|дня|часов|минут|секунд|\\bдн\\.|\\bч\\.|\\bмин",
+            RegexOption.IGNORE_CASE,
+        )
 
     private val avatars = ConcurrentHashMap<String, String>()
     private val avatarRegexes =
@@ -110,6 +116,7 @@ internal object ViewCountCorrector {
                 .replace('\u00A0', ' ')
                 .replace('\u202F', ' ')
                 .trim()
+        if (dateRegex.containsMatchIn(normalized)) return null
         val match = numberRegex.find(normalized) ?: return null
         val value =
             match.groupValues[1]

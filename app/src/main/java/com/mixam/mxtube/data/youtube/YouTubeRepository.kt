@@ -304,7 +304,7 @@ class YouTubeRepository(
             PlaybackInfo(
                 title = extractor.name.orEmpty(),
                 uploader = extractor.uploaderName.orEmpty(),
-                viewCount = extractor.viewCount,
+                viewCount = ViewCountCorrector.correct(url, extractor.viewCount),
                 uploadedAtEpochMillis = extractor.uploadDate?.instant?.toEpochMilli(),
                 thumbnailUrl = extractor.thumbnails.bestUrl(),
                 durationSeconds = extractor.length,

@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.mixam.mxtube.R
 import com.mixam.mxtube.data.youtube.VideoSummary
+import com.mixam.mxtube.data.youtube.ViewCountCorrector
 import com.mixam.mxtube.ui.common.ChannelAvatar
 import com.mixam.mxtube.ui.common.clusterCardColor
 import com.mixam.mxtube.ui.common.clusterInnerColor
@@ -58,7 +59,8 @@ fun VideoRow(
     val cardColor = clusterCardColor()
     val duration = formatDuration(video.durationSeconds)
     val channel = video.uploader.ifBlank { stringResource(R.string.unknown_channel) }
-    val views = if (video.viewCount >= 0) compactCount(video.viewCount) else ""
+    val viewCount = ViewCountCorrector.correct(video.url, video.viewCount)
+    val views = if (viewCount >= 0) compactCount(viewCount) else ""
     val uploaded =
         video.uploadedAtEpochMillis?.let { epoch -> formatRelativeDate(epoch) }.orEmpty()
     val meta =

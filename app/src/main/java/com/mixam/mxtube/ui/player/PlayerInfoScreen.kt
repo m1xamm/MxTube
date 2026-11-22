@@ -54,6 +54,7 @@ import coil3.compose.AsyncImage
 import com.mixam.mxtube.R
 import com.mixam.mxtube.data.local.SubscriptionNotificationMode
 import com.mixam.mxtube.data.youtube.VideoSummary
+import com.mixam.mxtube.data.youtube.ViewCountCorrector
 import com.mixam.mxtube.ui.common.HeroSource
 import com.mixam.mxtube.ui.common.formatRelativeDate
 import com.mixam.mxtube.ui.common.heroImage
@@ -171,7 +172,8 @@ private fun PlayerInfoScreen(
     modifier: Modifier = Modifier,
     stageContent: @Composable () -> Unit,
 ) {
-    val views = if (video.viewCount >= 0) viewsText(video.viewCount) else ""
+    val viewCount = ViewCountCorrector.correct(video.url, video.viewCount)
+    val views = if (viewCount >= 0) viewsText(viewCount) else ""
     val uploaded = video.uploadedAtEpochMillis?.let { formatRelativeDate(it) }.orEmpty()
     val meta =
         listOfNotNull(

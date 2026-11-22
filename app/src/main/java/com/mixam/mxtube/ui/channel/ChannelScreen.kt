@@ -135,6 +135,7 @@ import com.mixam.mxtube.R
 import com.mixam.mxtube.data.local.SubscriptionNotificationMode
 import com.mixam.mxtube.data.youtube.PlaylistSummary
 import com.mixam.mxtube.data.youtube.VideoSummary
+import com.mixam.mxtube.data.youtube.ViewCountCorrector
 import com.mixam.mxtube.notifications.SubscriptionNotificationScheduler
 import com.mixam.mxtube.playback.PlaybackHolder
 import com.mixam.mxtube.ui.common.GlassBottomSheet
@@ -1120,7 +1121,7 @@ private fun OverviewCard(video: VideoSummary, startCorner: Dp, endCorner: Dp, on
     val placeholder = ColorPainter(clusterInnerColor())
     val duration = formatDuration(video.durationSeconds)
     val meta = listOfNotNull(
-        video.viewCount.takeIf { it >= 0 }?.let { compactCount(it) },
+        ViewCountCorrector.correct(video.url, video.viewCount).takeIf { it >= 0 }?.let { compactCount(it) },
         video.uploadedAtEpochMillis?.let { formatRelativeDate(it) },
     ).joinToString(" • ")
     val interactionSource = remember { MutableInteractionSource() }

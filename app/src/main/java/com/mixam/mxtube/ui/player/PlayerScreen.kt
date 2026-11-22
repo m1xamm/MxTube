@@ -175,6 +175,7 @@ import com.mixam.mxtube.data.youtube.PlaybackInfo
 import com.mixam.mxtube.data.youtube.PlaybackQuality
 import com.mixam.mxtube.data.youtube.PlaybackSubtitle
 import com.mixam.mxtube.data.youtube.VideoSummary
+import com.mixam.mxtube.data.youtube.ViewCountCorrector
 import com.mixam.mxtube.notifications.SubscriptionNotificationScheduler
 import com.mixam.mxtube.playback.PlaybackHolder
 import com.mixam.mxtube.playback.PlaybackService
@@ -2035,7 +2036,8 @@ private fun FullscreenRelatedCard(
         label = "related-end-corner",
     )
     val duration = formatDuration(video.durationSeconds)
-    val views = if (video.viewCount >= 0) compactCount(video.viewCount) else ""
+    val viewCount = ViewCountCorrector.correct(video.url, video.viewCount)
+    val views = if (viewCount >= 0) compactCount(viewCount) else ""
     val uploaded =
         video.uploadedAtEpochMillis?.let { epoch -> formatRelativeDate(epoch) }.orEmpty()
     val meta =
@@ -2139,7 +2141,8 @@ private fun PlayerDetails(
     modifier: Modifier = Modifier,
 ) {
     val channelName = info.uploader.ifBlank { stringResource(R.string.unknown_channel) }
-    val views = if (info.viewCount >= 0) viewsText(info.viewCount) else ""
+    val viewCount = ViewCountCorrector.correct(video.url, info.viewCount)
+    val views = if (viewCount >= 0) viewsText(viewCount) else ""
     val uploaded = info.uploadedAtEpochMillis?.let { formatRelativeDate(it) }.orEmpty()
     val meta =
         listOfNotNull(

@@ -116,7 +116,11 @@ internal object FastContentResolver {
             title = title,
             uploader = uploader,
             durationSeconds = duration(duration),
-            viewCount = statsText.firstNotNullOfOrNull { ViewCountCorrector.parseViewCount(it) } ?: -1L,
+            viewCount =
+                ViewCountCorrector.correct(
+                    "https://www.youtube.com/watch?v=$id",
+                    statsText.firstNotNullOfOrNull { ViewCountCorrector.parseViewCount(it) } ?: -1L,
+                ),
             uploadedAtEpochMillis = statsText.firstNotNullOfOrNull { relative(it) },
             thumbnailUrl = source ?: "https://i.ytimg.com/vi/$id/hqdefault.jpg",
         )
@@ -347,7 +351,9 @@ internal object FastContentResolver {
                     .build()
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) error("HTTP ${response.code}")
-                response.body.string()
+                val text = response.body.string()
+                ViewCountCorrector.record(text)
+                text
             }
         }
     }
@@ -437,11 +443,14 @@ internal object FastContentResolver {
             uploader = text(byline).takeIf { it.isNotBlank() } ?: "MxTube",
             durationSeconds = duration(text(renderer.optJSONObject("lengthText"))),
             viewCount =
-                ViewCountCorrector.parseViewCount(
-                    text(renderer.optJSONObject("viewCountText")).ifBlank {
-                        text(renderer.optJSONObject("shortViewCountText"))
-                    },
-                ) ?: -1L,
+                ViewCountCorrector.correct(
+                    "https://www.youtube.com/watch?v=$id",
+                    ViewCountCorrector.parseViewCount(
+                        text(renderer.optJSONObject("viewCountText")).ifBlank {
+                            text(renderer.optJSONObject("shortViewCountText"))
+                        },
+                    ) ?: -1L,
+                ),
             uploadedAtEpochMillis = relative(text(renderer.optJSONObject("publishedTimeText"))),
             thumbnailUrl = "https://i.ytimg.com/vi/$id/hqdefault.jpg",
             uploaderUrl =

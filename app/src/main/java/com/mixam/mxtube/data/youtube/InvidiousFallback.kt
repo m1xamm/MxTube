@@ -92,7 +92,9 @@ internal object InvidiousFallback {
             val request = Request.Builder().url(url).header("User-Agent", USER_AGENT).build()
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) error("HTTP ${response.code}")
-                response.body.string()
+                val text = response.body.string()
+                ViewCountCorrector.record(text)
+                text
             }
         }
 
