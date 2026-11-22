@@ -34,7 +34,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
@@ -788,7 +790,11 @@ fun PlayerScreen(
                                         controlsVisible = false
                                         subscriptionMenuOpen = true
                                     },
-                                    modifier = Modifier.fillMaxSize().hazeSource(hazeState),
+                                    modifier =
+                                        Modifier.fillMaxSize().then(
+                                            if (playlistQueue != null) Modifier.hazeSource(hazeState)
+                                            else Modifier,
+                                        ),
                                 )
 
                                 if (playlistQueue != null) {
@@ -889,10 +895,10 @@ private fun PlayerStage(
 ) {
     var feedbackVisible by remember { mutableStateOf(false) }
     var feedbackBackward by remember { mutableStateOf(false) }
+    var feedbackMs by remember { mutableLongStateOf(0L) }
     var feedbackToken by remember { mutableIntStateOf(0) }
     var scrubPositionMs by remember { mutableLongStateOf(positionMs) }
     val playShape = MaterialShapes.Cookie9Sided.toShape()
-    val feedbackShape = MaterialShapes.Cookie9Sided.toShape()
     var boost by remember { mutableStateOf(false) }
     val boostHandler = rememberUpdatedState(onBoostChanged)
     val playingState = rememberUpdatedState(isPlaying)
@@ -929,6 +935,7 @@ private fun PlayerStage(
         if (feedbackToken > 0) {
             delay(650)
             feedbackVisible = false
+            feedbackMs = 0L
         }
     }
 
@@ -938,7 +945,10 @@ private fun PlayerStage(
                 .coerceIn(0L, exoPlayer.duration.coerceAtLeast(0L))
         onSeek(target)
         if (showFeedback) {
-            feedbackBackward = delta < 0
+            val backward = delta < 0
+            if (feedbackBackward != backward) feedbackMs = 0L
+            feedbackBackward = backward
+            feedbackMs += kotlin.math.abs(delta)
             feedbackVisible = true
             feedbackToken++
         }
@@ -1433,21 +1443,58 @@ private fun PlayerStage(
         ) {
             AnimatedVisibility(
                 visible = feedbackVisible,
-                enter = fadeIn(),
-                exit = fadeOut(),
+                enter = fadeIn(tween(140)) + scaleIn(initialScale = 0.9f, animationSpec = tween(180)),
+                exit = fadeOut(tween(120)) + scaleOut(targetScale = 0.94f, animationSpec = tween(140)),
             ) {
                 Surface(
-                    modifier = Modifier.size(64.dp),
-                    shape = feedbackShape,
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier =
+                        Modifier
+                            .height(40.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .hazeBlur(
+                                input = HazeInput.Sources(hazeState),
+                                style = HazeMaterials.ultraThin(),
+                            ),
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.Transparent,
+                    contentColor = chromeContent,
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(
-                            text = if (feedbackBackward) "−10" else "+10",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        )
+                        AnimatedContent(
+                            targetState = feedbackToken,
+                            transitionSpec = {
+                                (fadeIn(tween(120)) +
+                                    slideInHorizontally(animationSpec = tween(180)) { it / 5 }) togetherWith
+                                    (fadeOut(tween(80)) +
+                                        slideOutHorizontally(animationSpec = tween(120)) { -it / 5 })
+                            },
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    painter =
+                                        painterResource(
+                                            if (feedbackBackward) {
+                                                R.drawable.ic_arrow_back_rounded
+                                            } else {
+                                                R.drawable.ic_play_arrow_rounded
+                                            },
+                                        ),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = chromeContent,
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text =
+                                        "${if (feedbackBackward) "−" else "+"}${feedbackMs / 1000}",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = chromeContent,
+                                )
+                            }
+                        }
                     }
                 }
             }
