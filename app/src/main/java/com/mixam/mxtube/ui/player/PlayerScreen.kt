@@ -874,6 +874,7 @@ fun PlayerScreen(
 private fun SeekFeedback(
     count: Int,
     backward: Boolean,
+    hazeState: HazeState,
 ) {
     val pillScale = remember { Animatable(0f) }
     val arrowProgress = remember { Animatable(0f) }
@@ -887,11 +888,28 @@ private fun SeekFeedback(
         launch {
             arrowProgress.animateTo(
                 1f,
-                tween(340, easing = CubicBezierEasing(0.16f, 1.4f, 0.3f, 1f)),
+                spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
             )
         }
     }
-    val arrowShift = with(LocalDensity.current) { 12.dp.toPx() }
+    val nudge =
+        rememberInfiniteTransition(label = "seek-arrow-nudge")
+            .animateFloat(
+                initialValue = -1f,
+                targetValue = 1f,
+                animationSpec =
+                    infiniteRepeatable(
+                        animation = tween(680, easing = FastOutSlowInEasing),
+                        repeatMode = RepeatMode.Reverse,
+                    ),
+                label = "seek-arrow-nudge",
+            )
+    val density = LocalDensity.current
+    val arrowShift = with(density) { 22.dp.toPx() }
+    val nudgeShift = with(density) { 4.dp.toPx() }
     Box(Modifier.fillMaxSize().zIndex(2f)) {
         Row(
             modifier =
@@ -904,7 +922,11 @@ private fun SeekFeedback(
                         scaleY = p
                     }
                     .clip(RoundedCornerShape(50))
-                    .background(Color.Black.copy(alpha = 0.58f))
+                    .hazeBlur(
+                        input = HazeInput.Sources(hazeState),
+                        style = HazeMaterials.ultraThin(),
+                    )
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.34f))
                     .padding(horizontal = 14.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -920,15 +942,17 @@ private fun SeekFeedback(
                             scaleX = 0.55f + 0.45f * p
                             scaleY = 0.55f + 0.45f * p
                             rotationZ = if (backward) 180f else 0f
-                            translationX = (p - 1f) * arrowShift
+                            translationX =
+                                (p - 1f) * arrowShift +
+                                nudge.value * nudgeShift * if (backward) -1f else 1f
                         },
-                tint = Color.White,
+                tint = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(Modifier.width(8.dp))
             Text(
                 text = if (backward) "−${count * 10}" else "+${count * 10}",
                 style = MaterialTheme.typography.titleMedium,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
             )
         }
     }
@@ -1573,6 +1597,7 @@ private fun PlayerStage(
                 SeekFeedback(
                     count = feedbackCount,
                     backward = feedbackBackward,
+                    hazeState = hazeState,
                 )
             }
         }
