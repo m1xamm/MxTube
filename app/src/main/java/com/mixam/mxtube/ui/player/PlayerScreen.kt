@@ -19,6 +19,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -45,8 +47,8 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -94,6 +96,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -288,6 +291,13 @@ fun PlayerScreen(
     var hasEnteredFullscreen by remember { mutableStateOf(isFullscreen) }
     var ended by remember { mutableStateOf(false) }
     val fromMini = remember { enteredFromMini || bridgeFrame != null }
+    var miniMorphInProgress by remember { mutableStateOf(fromMini) }
+    LaunchedEffect(Unit) {
+        if (fromMini) {
+            delay(460)
+            miniMorphInProgress = false
+        }
+    }
     var controlsVisible by remember { mutableStateOf(!fromMini) }
     var isPlaying by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(false) }
@@ -306,12 +316,20 @@ fun PlayerScreen(
     var coverVisible by remember { mutableStateOf(true) }
     var playlistExpanded by remember { mutableStateOf(false) }
     var detailsVisible by remember { mutableStateOf(morphTo == null && !fromMini) }
-    val detailsAlpha by
+    var expandRevealTarget by remember { mutableFloatStateOf(if (fromMini) 0f else 1f) }
+    val expandReveal by
+        animateFloatAsState(
+            targetValue = expandRevealTarget,
+            animationSpec = tween(380, easing = CubicBezierEasing(0.26f, 1.06f, 0.18f, 1f)),
+            label = "player-expand-reveal",
+        )
+    val detailsFade by
         animateFloatAsState(
             targetValue = if (detailsVisible) 1f else 0f,
             animationSpec = tween(260, easing = FastOutSlowInEasing),
             label = "player-details-alpha",
         )
+    val detailsAlpha = if (fromMini) expandReveal else detailsFade
     var revealTarget by remember { mutableFloatStateOf(1f) }
     val backgroundColor = MaterialTheme.colorScheme.background
     val revealAlpha by
@@ -330,6 +348,7 @@ fun PlayerScreen(
             controlsVisible = true
             detailsVisible = true
             hazeWarmed = true
+            expandRevealTarget = 1f
         } else {
             delay(if (hazeWarmed) 260L else 2400L)
             chromeReady = true
@@ -690,6 +709,8 @@ fun PlayerScreen(
                                 bridgeFrame = bridgeFrame,
                                 onVideoView = { videoView.value = it },
                                 onBoostChanged = boostPlayback,
+                                expandReveal = expandReveal,
+                                hideVideo = miniMorphInProgress,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
@@ -761,6 +782,8 @@ fun PlayerScreen(
                                 bridgeFrame = bridgeFrame,
                                 onVideoView = { videoView.value = it },
                                 onBoostChanged = boostPlayback,
+                                expandReveal = expandReveal,
+                                hideVideo = miniMorphInProgress,
                                 modifier =
                                     Modifier
                                         .fillMaxWidth()
@@ -848,6 +871,70 @@ fun PlayerScreen(
 }
 
 @Composable
+private fun SeekFeedback(
+    count: Int,
+    backward: Boolean,
+) {
+    val pillScale = remember { Animatable(0f) }
+    val arrowProgress = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        launch {
+            pillScale.animateTo(
+                1f,
+                tween(260, easing = CubicBezierEasing(0.2f, 1.35f, 0.35f, 1f)),
+            )
+        }
+        launch {
+            arrowProgress.animateTo(
+                1f,
+                tween(340, easing = CubicBezierEasing(0.16f, 1.4f, 0.3f, 1f)),
+            )
+        }
+    }
+    val arrowShift = with(LocalDensity.current) { 12.dp.toPx() }
+    Box(Modifier.fillMaxSize().zIndex(2f)) {
+        Row(
+            modifier =
+                Modifier
+                    .align(if (backward) Alignment.CenterStart else Alignment.CenterEnd)
+                    .padding(horizontal = 28.dp)
+                    .graphicsLayer {
+                        val p = pillScale.value
+                        scaleX = p
+                        scaleY = p
+                    }
+                    .clip(RoundedCornerShape(50))
+                    .background(Color.Black.copy(alpha = 0.58f))
+                    .padding(horizontal = 14.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_play_arrow_rounded),
+                contentDescription = null,
+                modifier =
+                    Modifier
+                        .size(20.dp)
+                        .graphicsLayer {
+                            val p = arrowProgress.value
+                            alpha = p.coerceIn(0f, 1f)
+                            scaleX = 0.55f + 0.45f * p
+                            scaleY = 0.55f + 0.45f * p
+                            rotationZ = if (backward) 180f else 0f
+                            translationX = (p - 1f) * arrowShift
+                        },
+                tint = Color.White,
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = if (backward) "−${count * 10}" else "+${count * 10}",
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White,
+            )
+        }
+    }
+}
+
+@Composable
 private fun PlayerStage(
     exoPlayer: ExoPlayer,
     hazeState: HazeState,
@@ -885,22 +972,27 @@ private fun PlayerStage(
     bridgeFrame: Bitmap? = null,
     onVideoView: (View) -> Unit = {},
     onBoostChanged: (Boolean) -> Unit = {},
+    expandReveal: Float = 1f,
+    hideVideo: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var feedbackVisible by remember { mutableStateOf(false) }
     var feedbackBackward by remember { mutableStateOf(false) }
+    var feedbackCount by remember { mutableIntStateOf(0) }
     var feedbackToken by remember { mutableIntStateOf(0) }
+    var streakActive by remember { mutableStateOf(false) }
     var scrubPositionMs by remember { mutableLongStateOf(positionMs) }
     val playShape = MaterialShapes.Cookie9Sided.toShape()
-    val feedbackShape = MaterialShapes.Cookie9Sided.toShape()
     var boost by remember { mutableStateOf(false) }
     val boostHandler = rememberUpdatedState(onBoostChanged)
     val playingState = rememberUpdatedState(isPlaying)
     val gestureScope = rememberCoroutineScope()
     var boostJob by remember { mutableStateOf<Job?>(null) }
+    var tapJob by remember { mutableStateOf<Job?>(null) }
     DisposableEffect(Unit) {
         onDispose {
             boostJob?.cancel()
+            tapJob?.cancel()
             boostHandler.value(false)
         }
     }
@@ -927,21 +1019,30 @@ private fun PlayerStage(
 
     LaunchedEffect(feedbackToken) {
         if (feedbackToken > 0) {
-            delay(650)
+            delay(1000)
             feedbackVisible = false
+            streakActive = false
+            feedbackCount = 0
         }
     }
 
-    val seekBy: (Long, Boolean) -> Unit = { delta, showFeedback ->
+    val resetFeedback: () -> Unit = {
+        streakActive = false
+        feedbackVisible = false
+        feedbackCount = 0
+    }
+
+    val seekBy: (Long, Boolean) -> Unit = { delta, extend ->
         val target =
             (exoPlayer.currentPosition + delta)
                 .coerceIn(0L, exoPlayer.duration.coerceAtLeast(0L))
         onSeek(target)
-        if (showFeedback) {
-            feedbackBackward = delta < 0
-            feedbackVisible = true
-            feedbackToken++
-        }
+        val backward = delta < 0
+        feedbackCount = if (extend && streakActive && feedbackBackward == backward) feedbackCount + 1 else 1
+        feedbackBackward = backward
+        streakActive = true
+        feedbackVisible = true
+        feedbackToken++
     }
 
     val relatedVisibilityChanged = rememberUpdatedState(onRelatedVisibilityChanged)
@@ -952,39 +1053,65 @@ private fun PlayerStage(
                 .clipToBounds()
                 .pointerInput(Unit) {
                     val longPressTimeout = viewConfiguration.longPressTimeoutMillis
-                    detectTapGestures(
-                        onPress = { pressOffset ->
-                            boostJob?.cancel()
-                            val sidePress =
-                                pressOffset.x < size.width / 3f ||
-                                    pressOffset.x > size.width * 2f / 3f
-                            if (sidePress) {
-                                boostJob =
-                                    gestureScope.launch {
-                                        delay(longPressTimeout + 16)
-                                        if (playingState.value) {
-                                            boost = true
-                                            boostHandler.value(true)
-                                        }
+                    val doubleTapSlop = 48.dp.toPx()
+                    var lastTapTime = 0L
+                    var lastTapOffset = Offset.Zero
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        val downTime = System.currentTimeMillis()
+                        val downOffset = down.position
+                        boostJob?.cancel()
+                        val sidePress =
+                            downOffset.x < size.width / 3f || downOffset.x > size.width * 2f / 3f
+                        if (sidePress) {
+                            boostJob =
+                                gestureScope.launch {
+                                    delay(longPressTimeout + 16)
+                                    if (playingState.value) {
+                                        boost = true
+                                        boostHandler.value(true)
                                     }
-                            }
-                            tryAwaitRelease()
-                            boostJob?.cancel()
-                            if (boost) {
-                                boost = false
-                                boostHandler.value(false)
-                            }
-                        },
-                        onLongPress = {},
-                        onTap = { onToggleControls() },
-                        onDoubleTap = { offset ->
+                                }
+                        }
+                        val up = waitForUpOrCancellation()
+                        boostJob?.cancel()
+                        val boosted = boost
+                        if (boosted) {
+                            boost = false
+                            boostHandler.value(false)
+                        }
+                        if (up == null || boosted) return@awaitEachGesture
+                        tapJob?.cancel()
+                        if (streakActive) {
                             onHideControls()
                             seekBy(
-                                if (offset.x < size.width / 2f) -10_000L else 10_000L,
+                                if (downOffset.x < size.width / 2f) -10_000L else 10_000L,
                                 true,
                             )
-                        },
-                    )
+                            lastTapTime = 0L
+                        } else {
+                            val isDouble =
+                                lastTapTime > 0 &&
+                                    downTime - lastTapTime <= 300L &&
+                                    (downOffset - lastTapOffset).getDistance() <= doubleTapSlop
+                            if (isDouble) {
+                                lastTapTime = 0L
+                                onHideControls()
+                                seekBy(
+                                    if (downOffset.x < size.width / 2f) -10_000L else 10_000L,
+                                    false,
+                                )
+                            } else {
+                                tapJob =
+                                    gestureScope.launch {
+                                        delay(300)
+                                        onToggleControls()
+                                    }
+                                lastTapTime = downTime
+                                lastTapOffset = downOffset
+                            }
+                        }
+                    }
                 }
                 .pointerInput(Unit) {
                     awaitEachGesture {
@@ -1107,6 +1234,7 @@ private fun PlayerStage(
                 Modifier
                     .fillMaxSize()
                     .graphicsLayer {
+                        alpha = if (hideVideo) 0f else 1f
                         scaleX = zoomScale
                         scaleY = zoomScale
                         translationX = zoomOffset.x
@@ -1125,7 +1253,10 @@ private fun PlayerStage(
         ) {
             EndScreen(
                 suggestions = endSuggestions,
-                onReplay = onReplay,
+                onReplay = {
+                    resetFeedback()
+                    onReplay()
+                },
                 onSuggestionClick = onEndSuggestionClick,
                 onAutoAdvance = onEndAutoAdvance,
             )
@@ -1140,11 +1271,15 @@ private fun PlayerStage(
                 model = coverUrl,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize().hazeSource(hazeState),
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = if (hideVideo) 0f else 1f }
+                        .hazeSource(hazeState),
             )
         }
 
-        if (isBuffering && !controlsVisible) {
+        if (isBuffering && !controlsVisible && !hideVideo) {
             Box(
                 modifier =
                     Modifier
@@ -1166,7 +1301,13 @@ private fun PlayerStage(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .zIndex(1f),
+                    .zIndex(1f)
+                    .graphicsLayer {
+                        alpha = expandReveal
+                        val scale = 0.96f + 0.04f * expandReveal
+                        scaleX = scale
+                        scaleY = scale
+                    },
             enter = fadeIn(),
             exit = fadeOut(),
         ) {
@@ -1340,7 +1481,10 @@ private fun PlayerStage(
                                 bufferedMs = bufferedMs,
                                 durationMs = durationMs,
                                 isPlaying = isPlaying,
-                                onSeek = onSeek,
+                                onSeek = { ms ->
+                                    resetFeedback()
+                                    onSeek(ms)
+                                },
                                 onDraggingChanged = onDraggingChanged,
                                 onScrubPositionChanged = { scrubPositionMs = it },
                                 modifier = Modifier.weight(1f),
@@ -1424,32 +1568,12 @@ private fun PlayerStage(
             }
         }
 
-        Box(
-            modifier =
-                Modifier
-                    .align(if (feedbackBackward) Alignment.CenterStart else Alignment.CenterEnd)
-                    .padding(horizontal = 28.dp)
-                    .zIndex(2f),
-        ) {
-            AnimatedVisibility(
-                visible = feedbackVisible,
-                enter = fadeIn(),
-                exit = fadeOut(),
-            ) {
-                Surface(
-                    modifier = Modifier.size(64.dp),
-                    shape = feedbackShape,
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                ) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(
-                            text = if (feedbackBackward) "−10" else "+10",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        )
-                    }
-                }
+        if (feedbackVisible) {
+            key(feedbackToken) {
+                SeekFeedback(
+                    count = feedbackCount,
+                    backward = feedbackBackward,
+                )
             }
         }
 

@@ -112,6 +112,7 @@ fun MiniPlayer(
         )
     }
     var controlsVisible by remember { mutableStateOf(false) }
+    val windowShape = RoundedCornerShape(12.dp)
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
     val videoView = remember { mutableStateOf<PlayerView?>(null) }
@@ -273,7 +274,7 @@ fun MiniPlayer(
                     .size(width = WINDOW_WIDTH_DP.dp, height = (WINDOW_WIDTH_DP * WINDOW_ASPECT).dp)
                     .graphicsLayer {
                         val target = expandTarget
-                        alpha = if (target != null) 1f - expandProgress.value.coerceIn(0f, 1f) else 1f
+                        alpha = 1f
                         if (target != null) {
                             val p = expandProgress.value.coerceIn(0f, 1f)
                             val current = position ?: Offset(bounds.value.maxX, bounds.value.maxY)
@@ -290,7 +291,7 @@ fun MiniPlayer(
                             scaleY = scale
                             transformOrigin = TransformOrigin(0.5f, 0.5f)
                             clip = true
-                            shape = RoundedCornerShape((12f * (1f - p) / scale).dp)
+                            shape = windowShape
                         } else if (collapseFrom != null) {
                             val p = collapseProgress.value.coerceIn(0f, 1f)
                             val current = position ?: Offset(bounds.value.maxX, bounds.value.maxY)
