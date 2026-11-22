@@ -26,8 +26,8 @@ internal object FastStreamResolver {
     private val client: OkHttpClient by lazy {
         Http.client
             .newBuilder()
-            .callTimeout(8, TimeUnit.SECONDS)
-            .connectTimeout(3, TimeUnit.SECONDS)
+            .callTimeout(12, TimeUnit.SECONDS)
+            .connectTimeout(5, TimeUnit.SECONDS)
             .build()
     }
 

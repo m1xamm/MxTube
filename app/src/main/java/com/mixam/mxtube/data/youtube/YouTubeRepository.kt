@@ -3,6 +3,7 @@ package com.mixam.mxtube.data.youtube
 import com.mixam.mxtube.AppLocale
 import com.mixam.mxtube.R
 import android.util.Log
+import kotlinx.coroutines.delay
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.schabi.newpipe.extractor.Extractor
@@ -262,14 +263,14 @@ class YouTubeRepository(
             .trim()
 
     suspend fun resolve(url: String): PlaybackInfo {
-        val fast =
-            FastStreamResolver.resolve(
-                url = url,
-                audioLabel = string(R.string.player_audio_original),
-                hl = NewPipe.getPreferredLocalization().languageCode,
-                gl = NewPipe.getPreferredContentCountry().countryCode,
-            )
+        val label = string(R.string.player_audio_original)
+        val hl = NewPipe.getPreferredLocalization().languageCode
+        val gl = NewPipe.getPreferredContentCountry().countryCode
+        val fast = FastStreamResolver.resolve(url, label, hl, gl)
         if (fast != null) return fast
+        delay(250)
+        val retry = FastStreamResolver.resolve(url, label, hl, gl)
+        if (retry != null) return retry
         return resolveSlow(url)
     }
 

@@ -68,13 +68,15 @@ internal object InvidiousFallback {
 
     private fun candidates(): List<String> {
         val now = System.currentTimeMillis()
-        return buildList {
-            lastWorking?.let(::add)
-            addAll(seeds)
-        }
-            .filter { (failedUntil[it] ?: 0L) <= now }
-            .distinct()
-            .take(MAX_INSTANCES)
+        val preferred =
+            buildList {
+                lastWorking?.let(::add)
+                addAll(seeds)
+            }
+                .filter { (failedUntil[it] ?: 0L) <= now }
+                .distinct()
+                .take(MAX_INSTANCES)
+        return preferred.ifEmpty { seeds.take(MAX_INSTANCES) }
     }
 
     private fun markFailed(instance: String) {

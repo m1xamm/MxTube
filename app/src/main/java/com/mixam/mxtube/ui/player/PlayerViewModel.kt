@@ -248,7 +248,7 @@ class PlayerViewModel(
         enrichJob?.cancel()
         enrichJob =
             viewModelScope.launch {
-                delay(5000)
+                delay(1800)
                 val full = runCatching { enrichVideo(videoUrl) }.getOrNull() ?: return@launch
                 val merged = mergeRelated(full.related, _uiState.value.related)
                 full.related.forEach { video ->
@@ -262,7 +262,7 @@ class PlayerViewModel(
                 _uiState.update { state ->
                     val info = state.info ?: return@update state
                     val audioTracks =
-                        if (info.audioTracks.size <= 1 && full.audioTracks.size > 1) {
+                        if (full.audioTracks.size > info.audioTracks.size) {
                             full.audioTracks
                         } else {
                             info.audioTracks
