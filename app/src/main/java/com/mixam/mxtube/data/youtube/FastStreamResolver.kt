@@ -24,7 +24,11 @@ internal object FastStreamResolver {
     private const val MAX_QUALITIES = 8
 
     private val client: OkHttpClient by lazy {
-        Http.client.newBuilder().callTimeout(12, TimeUnit.SECONDS).build()
+        Http.client
+            .newBuilder()
+            .callTimeout(8, TimeUnit.SECONDS)
+            .connectTimeout(3, TimeUnit.SECONDS)
+            .build()
     }
 
     private val videoIdRegex =

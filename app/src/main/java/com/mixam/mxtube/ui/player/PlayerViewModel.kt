@@ -248,7 +248,7 @@ class PlayerViewModel(
         enrichJob?.cancel()
         enrichJob =
             viewModelScope.launch {
-                delay(1400)
+                delay(5000)
                 val full = runCatching { enrichVideo(videoUrl) }.getOrNull() ?: return@launch
                 val merged = mergeRelated(full.related, _uiState.value.related)
                 full.related.forEach { video ->
