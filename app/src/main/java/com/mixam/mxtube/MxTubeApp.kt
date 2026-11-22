@@ -226,6 +226,7 @@ fun MxTubeApp(
         val video = pendingExpand
         if (video != null) {
             playerEnterFade = false
+            playerBridge = bitmap
             playerMorphTo = null
             playerRelated = miniRelated
             playerReturnChannel = selectedChannelUrl
