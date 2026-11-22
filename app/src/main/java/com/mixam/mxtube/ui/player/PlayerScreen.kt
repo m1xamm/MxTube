@@ -941,10 +941,9 @@ private fun SeekFeedback(
                             alpha = p.coerceIn(0f, 1f)
                             scaleX = 0.55f + 0.45f * p
                             scaleY = 0.55f + 0.45f * p
-                            rotationZ = if (backward) 180f else 0f
+                            rotationZ = 0f
                             translationX =
-                                (p - 1f) * arrowShift +
-                                nudge.value * nudgeShift * if (backward) -1f else 1f
+                                (p - 1f) * arrowShift + nudge.value * nudgeShift
                         },
                 tint = MaterialTheme.colorScheme.onSurface,
             )

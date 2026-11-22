@@ -271,42 +271,50 @@ fun ChannelScreen(
             indicator = {},
         ) {
             Box(Modifier.fillMaxSize().hazeSource(haze)) {
-                if (selectedPlaylist != null) {
-                    key(selectedPlaylist.url) {
-                        PlaylistDetailList(
-                            state = state,
-                            playlist = selectedPlaylist,
-                            hasMiniPlayer = miniVisible,
-                            onVideoClick = onVideoClick,
-                            onPlaylistQueue = onPlaylistQueue,
-                            onRetry = viewModel::retryPlaylist,
-                            onLoadMore = viewModel::loadMore,
-                        )
-                    }
-                } else {
-                    Crossfade(
-                        targetState = state.selectedTab,
-                        animationSpec = tween(180, easing = FastOutSlowInEasing),
-                        label = "channel-tab-content",
-                    ) { tab ->
-                        when (tab) {
-                            ChannelProfileTab.Home -> ChannelList(homeList, state, miniVisible, tabsVisible, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
-                                homeContent(state, onVideoClick, viewModel::openPlaylist, viewModel::selectTab, viewModel::retryVideos, viewModel::retryPlaylists)
+                Crossfade(
+                    targetState = selectedPlaylist?.url ?: "",
+                    animationSpec = tween(200, easing = FastOutSlowInEasing),
+                    label = "channel-playlist-content",
+                ) { target ->
+                    if (target.isEmpty()) {
+                        Crossfade(
+                            targetState = state.selectedTab,
+                            animationSpec = tween(180, easing = FastOutSlowInEasing),
+                            label = "channel-tab-content",
+                        ) { tab ->
+                            when (tab) {
+                                ChannelProfileTab.Home -> ChannelList(homeList, state, miniVisible, tabsVisible, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
+                                    homeContent(state, onVideoClick, viewModel::openPlaylist, viewModel::selectTab, viewModel::retryVideos, viewModel::retryPlaylists)
+                                }
+                                ChannelProfileTab.Videos -> ChannelList(videosList, state, miniVisible, tabsVisible, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
+                                    videosContent(state, onVideoClick, viewModel::retryVideos)
+                                }
+                                ChannelProfileTab.Playlists -> ChannelList(playlistsList, state, miniVisible, tabsVisible, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
+                                    playlistsContent(state, viewModel::openPlaylist, viewModel::retryPlaylists)
+                                }
+                                ChannelProfileTab.Shorts -> ChannelList(shortsList, state, miniVisible, tabsVisible, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
+                                    item(key = "shorts_soon") { EmptyItem(stringResource(R.string.section_soon)) }
+                                }
+                                ChannelProfileTab.Lives -> ChannelList(livesList, state, miniVisible, tabsVisible, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
+                                    item(key = "lives_soon") { EmptyItem(stringResource(R.string.section_soon)) }
+                                }
+                                ChannelProfileTab.Posts -> ChannelList(postsList, state, miniVisible, tabsVisible, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
+                                    item(key = "posts_soon") { EmptyItem(stringResource(R.string.section_soon)) }
+                                }
                             }
-                            ChannelProfileTab.Videos -> ChannelList(videosList, state, miniVisible, tabsVisible, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
-                                videosContent(state, onVideoClick, viewModel::retryVideos)
-                            }
-                            ChannelProfileTab.Playlists -> ChannelList(playlistsList, state, miniVisible, tabsVisible, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
-                                playlistsContent(state, viewModel::openPlaylist, viewModel::retryPlaylists)
-                            }
-                            ChannelProfileTab.Shorts -> ChannelList(shortsList, state, miniVisible, tabsVisible, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
-                                item(key = "shorts_soon") { EmptyItem(stringResource(R.string.section_soon)) }
-                            }
-                            ChannelProfileTab.Lives -> ChannelList(livesList, state, miniVisible, tabsVisible, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
-                                item(key = "lives_soon") { EmptyItem(stringResource(R.string.section_soon)) }
-                            }
-                            ChannelProfileTab.Posts -> ChannelList(postsList, state, miniVisible, tabsVisible, viewModel::loadMore, viewModel::load, { aboutOpen = true }, onSubscribe, viewModel::selectTab, tabRowState) {
-                                item(key = "posts_soon") { EmptyItem(stringResource(R.string.section_soon)) }
+                        }
+                    } else {
+                        selectedPlaylist?.let { playlist ->
+                            key(playlist.url) {
+                                PlaylistDetailList(
+                                    state = state,
+                                    playlist = playlist,
+                                    hasMiniPlayer = miniVisible,
+                                    onVideoClick = onVideoClick,
+                                    onPlaylistQueue = onPlaylistQueue,
+                                    onRetry = viewModel::retryPlaylist,
+                                    onLoadMore = viewModel::loadMore,
+                                )
                             }
                         }
                     }
